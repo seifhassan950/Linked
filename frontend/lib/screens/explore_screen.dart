@@ -866,6 +866,9 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       _showSnack('Asset uploaded to marketplace.');
     } on ApiException catch (e) {
       _showSnack(e.message);
+    } on Exception catch (e) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      _showSnack(message.isEmpty ? 'Unable to upload asset' : message);
     } catch (_) {
       _showSnack('Unable to upload asset');
     } finally {
