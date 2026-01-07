@@ -50,6 +50,15 @@ class AssetUpdateIn(BaseModel):
     preview_object_keys: list[str] | None = None
     metadata: dict[str, Any] | None = None
 
+class AssetPresignIn(BaseModel):
+    filename: str
+    content_type: str = "application/octet-stream"
+    kind: str = "model"
+
+class AssetPresignOut(BaseModel):
+    url: str
+    key: str
+
 class EntitlementOut(BaseModel):
     asset_id: str
     entitled: bool

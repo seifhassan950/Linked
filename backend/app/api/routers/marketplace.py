@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc, or_
 from app.api.deps import get_db, get_current_user
-from app.api.schemas.marketplace import AssetOut, AssetCreateIn, AssetUpdateIn, EntitlementOut
+from app.api.schemas.marketplace import AssetOut, AssetCreateIn, AssetUpdateIn, EntitlementOut, AssetPresignIn, AssetPresignOut
 from app.core.errors import not_found, forbidden, bad_request
 from app.db.models.marketplace import Asset, RecentlyViewed
 from app.db.models.user import UserProfile
@@ -11,6 +11,7 @@ from app.services.entitlements import is_entitled_to_asset
 from app.services.s3 import s3
 from app.core.config import settings
 import datetime as dt
+import uuid
 
 router = APIRouter()
 
@@ -58,6 +59,16 @@ def list_assets(q: str | None = None, category: str | None = None, style: str | 
         rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(creator_ids))).scalars().all()
         profiles = {p.user_id: p.username for p in rows}
     return [to_out(a, profiles.get(a.creator_id)) for a in items]
+
+@router.post("/assets/presign", response_model=AssetPresignOut)
+def presign_asset(payload: AssetPresignIn, user = Depends(get_current_user)):
+    kind = payload.kind.lower()
+    if kind not in {"model", "thumb"}:
+        bad_request("kind must be model|thumb")
+    bucket = settings.s3_bucket_marketplace_models if kind == "model" else settings.s3_bucket_marketplace_thumbs
+    key = f"{user.id}/marketplace/{kind}/{uuid.uuid4()}_{payload.filename}"
+    url = s3.presign_put(bucket, key, expires=3600)
+    return AssetPresignOut(url=url, key=key)
 
 @router.post("/assets", response_model=AssetOut)
 def create_asset(payload: AssetCreateIn, db: Session = Depends(get_db), user = Depends(get_current_user)):

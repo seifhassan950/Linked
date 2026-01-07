@@ -660,11 +660,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _openUploadDialog(BuildContext context) async {
-    await showDialog(
+    final didUpload = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.65),
       builder: (_) => const _MarketplaceUploadDialog(),
     );
+    if (didUpload == true && mounted) {
+      _loadAssets();
+    }
   }
 }
 
@@ -687,6 +690,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   Uint8List? _thumbnailBytes;
   String? _thumbnailName;
   bool _thumbnailCaptured = false;
+  bool _isUploading = false;
 
   String _category = "Objects";
   String _style = "Realistic";
@@ -773,18 +777,27 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
     }
   }
 
+  String _thumbnailMimeType(String? name) {
+    final lower = (name ?? '').toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'application/octet-stream';
+  }
+
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
 
-  void _submitUpload() {
+  Future<void> _submitUpload() async {
+    if (_isUploading) return;
     if (_titleController.text.trim().isEmpty) {
       _showSnack('Add a title for your asset.');
       return;
     }
-    if (_modelDataUrl == null) {
+    if (_modelDataUrl == null || _modelBytes == null) {
       _showSnack('Upload a 3D model to continue.');
       return;
     }
@@ -792,8 +805,72 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       _showSnack('Choose a thumbnail or capture one from the viewer.');
       return;
     }
-    Navigator.of(context).pop();
-    _showSnack('Asset ready to post in marketplace.');
+    final priceInput = _priceController.text.trim();
+    final parsedPrice = priceInput.isEmpty ? 0 : int.tryParse(priceInput);
+    if (parsedPrice == null || parsedPrice < 0) {
+      _showSnack('Enter a valid price.');
+      return;
+    }
+
+    setState(() => _isUploading = true);
+    try {
+      final modelName = _modelName ?? 'model.glb';
+      final modelExt = modelName.split('.').last.toLowerCase();
+      final modelMime = _modelMimeType(modelExt);
+      final modelPresign = await r2vMarketplace.presignAssetUpload(
+        filename: modelName,
+        contentType: modelMime,
+        kind: 'model',
+      );
+      if (modelPresign['url']!.isEmpty || modelPresign['key']!.isEmpty) {
+        throw Exception('Missing upload url');
+      }
+      await r2vMarketplace.uploadToPresignedUrl(
+        modelPresign['url']!,
+        _modelBytes!,
+        modelMime,
+      );
+
+      final thumbName = _thumbnailName ?? 'thumbnail.png';
+      final thumbMime = _thumbnailMimeType(thumbName);
+      final thumbPresign = await r2vMarketplace.presignAssetUpload(
+        filename: thumbName,
+        contentType: thumbMime,
+        kind: 'thumb',
+      );
+      if (thumbPresign['url']!.isEmpty || thumbPresign['key']!.isEmpty) {
+        throw Exception('Missing thumbnail upload url');
+      }
+      await r2vMarketplace.uploadToPresignedUrl(
+        thumbPresign['url']!,
+        _thumbnailBytes!,
+        thumbMime,
+      );
+
+      final asset = await r2vMarketplace.createAsset(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        tags: const [],
+        category: _category,
+        style: _style,
+        isPaid: parsedPrice > 0,
+        price: parsedPrice,
+        currency: 'egp',
+        modelObjectKey: modelPresign['key']!,
+        thumbObjectKey: thumbPresign['key']!,
+        previewObjectKeys: [modelPresign['key']!],
+      );
+      await r2vMarketplace.publishAsset(asset.id);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      _showSnack('Asset uploaded to marketplace.');
+    } on ApiException catch (e) {
+      _showSnack(e.message);
+    } catch (_) {
+      _showSnack('Unable to upload asset');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   @override
@@ -954,14 +1031,14 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _submitUpload,
+                        onPressed: _isUploading ? null : _submitUpload,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF8A4FFF),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        child: const Text("Post Asset"),
+                        child: Text(_isUploading ? "Uploading..." : "Post Asset"),
                       ),
                     ),
                   ],
