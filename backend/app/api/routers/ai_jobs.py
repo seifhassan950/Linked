@@ -16,6 +16,7 @@ def to_job_out(j: AIJob) -> JobOut:
     return JobOut(
         id=str(j.id), status=j.status, progress=j.progress,
         created_at=j.created_at.isoformat(), updated_at=j.updated_at.isoformat() if j.updated_at else None,
+        prompt=j.prompt,
         metadata=j.job_metadata or {}, output_glb_key=j.output_glb_key, output_stl_key=j.output_stl_key,
         output_image_key=j.output_image_key, preview_keys=j.preview_keys or [], error=j.error
     )

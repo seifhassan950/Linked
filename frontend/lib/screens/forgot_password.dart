@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class ForgotPassword extends StatefulWidget {
   @override
@@ -8,6 +10,7 @@ class ForgotPassword extends StatefulWidget {
 
 class _ForgotPasswordState extends State<ForgotPassword> {
   final TextEditingController emailController = TextEditingController();
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -167,15 +170,40 @@ class _ForgotPasswordState extends State<ForgotPassword> {
         const SizedBox(height: 35),
 
         GestureDetector(
-          onTap: () {
-            if (emailController.text.isNotEmpty) {
-              Navigator.pushNamed(
-                context,
-                '/verifyotp',
-                arguments: emailController.text.trim(),
-              );
-            }
-          },
+          onTap: _loading
+              ? null
+              : () async {
+                  final email = emailController.text.trim();
+                  if (email.isEmpty) return;
+
+                  setState(() => _loading = true);
+                  try {
+                    final res = await r2vPasswordReset.requestReset(email);
+                    if (!mounted) return;
+                    if (res.devCode != null && res.devCode!.isNotEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Verification code: ${res.devCode}')),
+                      );
+                    }
+                    Navigator.pushNamed(
+                      context,
+                      '/verifyotp',
+                      arguments: email,
+                    );
+                  } on ApiException catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.message)),
+                    );
+                  } catch (_) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to request reset')),
+                    );
+                  } finally {
+                    if (mounted) setState(() => _loading = false);
+                  }
+                },
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),

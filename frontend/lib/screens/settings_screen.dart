@@ -1,5 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -102,7 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: "Logout",
             icon: Icons.logout_rounded,
             color: Colors.orange,
-            onTap: () => Navigator.pushReplacementNamed(context, '/signin'),
+            onTap: _logout,
           ),
           const SizedBox(height: 14),
           _staticAction(
@@ -301,7 +304,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () async {
+              try {
+                final url = await r2vBilling.checkoutSubscription();
+                if (url.isEmpty) {
+                  throw Exception('Missing checkout url');
+                }
+                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              } on ApiException catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.message)),
+                );
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open checkout')),
+                );
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF8A4FFF),
@@ -355,7 +376,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           TextButton(
-            onPressed: () {},
+            onPressed: () async {
+              try {
+                final url = await r2vBilling.checkoutSubscription();
+                if (url.isEmpty) {
+                  throw Exception('Missing checkout url');
+                }
+                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              } on ApiException catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.message)),
+                );
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open checkout')),
+                );
+              }
+            },
             child: const Text(
               "Change",
               style: TextStyle(
@@ -458,6 +497,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _logout() async {
+    try {
+      await r2vAuth.logout();
+    } catch (_) {
+      // ignore logout errors; we'll still navigate away
+    }
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, '/signin');
+  }
+
   // DELETE ACCOUNT POPUP
   void _showDeleteDialog() {
     showDialog(
@@ -478,7 +527,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              try {
+                await r2vProfile.deleteAccount();
+                await r2vAuth.logout();
+              } on ApiException catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.message)),
+                );
+                return;
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Failed to delete account')),
+                );
+                return;
+              }
+              if (!mounted) return;
               Navigator.pushReplacementNamed(context, '/signin');
             },
             child: const Text("Delete", style: TextStyle(color: Colors.red)),

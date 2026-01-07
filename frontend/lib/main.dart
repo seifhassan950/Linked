@@ -20,6 +20,7 @@ import 'screens/settings_screen.dart';
 import 'screens/explore_screen.dart';
 import 'screens/profile_screen.dart';
 import 'payments/payment_screen.dart';
+import 'api/marketplace_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,13 +108,15 @@ initialRoute: '/signin',
             page = ForgotPassword();
             break;
           case '/setnewpass':
-            page = SetNewPasswordPage();
+            page = SetNewPasswordPage(
+              resetToken: settings.arguments is String ? settings.arguments as String : null,
+            );
             break;
           case '/completeprofile':
             page = CompleteProfile();
             break;
           case '/home':
-            page = const HomeScreen(username: 'Test_User');
+            page = const HomeScreen();
             break;
           case '/aichat':
             page = const AIChatScreen();
@@ -128,10 +131,10 @@ initialRoute: '/signin',
             page = const ExploreScreen();
             break;
           case '/profile':
-            page = const ProfileScreen(username: 'Test_User');
+            page = const ProfileScreen();
             break;
           case '/editprofile':
-            page = const ProfileScreen(username: 'Test_User');
+            page = const ProfileScreen();
             break;
 
           // ---------------------- Dynamic routes ----------------------
@@ -147,7 +150,7 @@ initialRoute: '/signin',
           final args = settings.arguments;
 
           // expects: Navigator.pushNamed(context, '/payment', arguments: <String,String>{...});
-          if (args is Map<String, String>) {
+          if (args is MarketplaceAsset) {
             page = PaymentScreen(asset: args); // ✅ changed from PaymentPage -> PaymentScreen
           } else {
             page = const Scaffold(

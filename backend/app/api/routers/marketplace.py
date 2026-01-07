@@ -6,17 +6,37 @@ from app.api.deps import get_db, get_current_user
 from app.api.schemas.marketplace import AssetOut, AssetCreateIn, AssetUpdateIn, EntitlementOut
 from app.core.errors import not_found, forbidden, bad_request
 from app.db.models.marketplace import Asset, RecentlyViewed
+from app.db.models.user import UserProfile
 from app.services.entitlements import is_entitled_to_asset
+from app.services.s3 import s3
+from app.core.config import settings
 import datetime as dt
 
 router = APIRouter()
 
-def to_out(a: Asset) -> AssetOut:
+def _thumb_url(a: Asset) -> str | None:
+    if not a.thumb_object_key:
+        return None
+    return s3.presign_get(settings.s3_bucket_marketplace_thumbs, a.thumb_object_key, expires=900)
+
+def _preview_url(a: Asset) -> str | None:
+    if not a.preview_object_keys:
+        return None
+    key = a.preview_object_keys[0]
+    return s3.presign_get(settings.s3_bucket_marketplace_models, key, expires=900)
+
+def to_out(a: Asset, creator_username: str | None = None) -> AssetOut:
+    meta = dict(a.meta_json or {})
+    if creator_username:
+        meta.setdefault("creator_username", creator_username)
+    meta.setdefault("likes", meta.get("likes", 0))
     return AssetOut(
         id=str(a.id), title=a.title, description=a.description, tags=a.tags or [], category=a.category, style=a.style,
         creator_id=str(a.creator_id), is_paid=a.is_paid, price=a.price, currency=a.currency,
         visibility=a.visibility, published_at=a.published_at.isoformat() if a.published_at else None,
-        thumb_object_key=a.thumb_object_key, model_object_key=a.model_object_key, metadata=a.meta_json or {}
+        thumb_object_key=a.thumb_object_key, thumb_url=_thumb_url(a),
+        model_object_key=a.model_object_key, preview_url=_preview_url(a),
+        metadata=meta,
     )
 
 @router.get("/assets", response_model=list[AssetOut])
@@ -32,7 +52,12 @@ def list_assets(q: str | None = None, category: str | None = None, style: str | 
         stmt = stmt.where(Asset.style == style)
     stmt = stmt.order_by(desc(Asset.published_at)).limit(limit).offset(offset)
     items = db.execute(stmt).scalars().all()
-    return [to_out(a) for a in items]
+    creator_ids = {a.creator_id for a in items}
+    profiles = {}
+    if creator_ids:
+        rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(creator_ids))).scalars().all()
+        profiles = {p.user_id: p.username for p in rows}
+    return [to_out(a, profiles.get(a.creator_id)) for a in items]
 
 @router.post("/assets", response_model=AssetOut)
 def create_asset(payload: AssetCreateIn, db: Session = Depends(get_db), user = Depends(get_current_user)):
@@ -54,7 +79,9 @@ def create_asset(payload: AssetCreateIn, db: Session = Depends(get_db), user = D
         meta_json=payload.metadata,
     )
     db.add(a); db.commit(); db.refresh(a)
-    return to_out(a)
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return to_out(a, creator_name)
 
 @router.get("/assets/{asset_id}", response_model=AssetOut)
 def get_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
@@ -70,7 +97,9 @@ def get_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_c
     else:
         db.add(RecentlyViewed(user_id=user.id, asset_id=a.id))
     db.commit()
-    return to_out(a)
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == a.creator_id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return to_out(a, creator_name)
 
 @router.patch("/assets/{asset_id}", response_model=AssetOut)
 def update_asset(asset_id: str, payload: AssetUpdateIn, db: Session = Depends(get_db), user = Depends(get_current_user)):
@@ -84,7 +113,9 @@ def update_asset(asset_id: str, payload: AssetUpdateIn, db: Session = Depends(ge
         else:
             setattr(a, field, value)
     db.commit(); db.refresh(a)
-    return to_out(a)
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return to_out(a, creator_name)
 
 @router.post("/assets/{asset_id}/publish", response_model=AssetOut)
 def publish(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
@@ -96,7 +127,9 @@ def publish(asset_id: str, db: Session = Depends(get_db), user = Depends(get_cur
     a.visibility = "published"
     a.published_at = dt.datetime.now(dt.timezone.utc)
     db.commit(); db.refresh(a)
-    return to_out(a)
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return to_out(a, creator_name)
 
 @router.get("/assets/{asset_id}/entitlement", response_model=EntitlementOut)
 def entitlement(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):

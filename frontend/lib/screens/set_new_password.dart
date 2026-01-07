@@ -1,7 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class SetNewPasswordPage extends StatefulWidget {
+  final String? resetToken;
+
+  const SetNewPasswordPage({super.key, this.resetToken});
+
   @override
   State<SetNewPasswordPage> createState() => _SetNewPasswordPageState();
 }
@@ -12,6 +18,7 @@ class _SetNewPasswordPageState extends State<SetNewPasswordPage> {
 
   bool _obscure1 = true;
   bool _obscure2 = true;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -181,7 +188,9 @@ class _SetNewPasswordPageState extends State<SetNewPasswordPage> {
         // UPDATE BUTTON
         // -------------------------------------------------------
         GestureDetector(
-          onTap: () {
+          onTap: _loading
+              ? null
+              : () async {
             if (pass1.text.isEmpty || pass2.text.isEmpty) {
               _error("Please fill all fields");
               return;
@@ -191,7 +200,28 @@ class _SetNewPasswordPageState extends State<SetNewPasswordPage> {
               return;
             }
 
-            Navigator.pushNamed(context, '/signin');
+            if (widget.resetToken == null || widget.resetToken!.isEmpty) {
+              _error("Missing reset token");
+              return;
+            }
+
+            setState(() => _loading = true);
+            try {
+              await r2vPasswordReset.resetPassword(widget.resetToken!, pass1.text);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Password updated')),
+              );
+              Navigator.pushNamed(context, '/signin');
+            } on ApiException catch (e) {
+              if (!mounted) return;
+              _error(e.message);
+            } catch (_) {
+              if (!mounted) return;
+              _error("Password update failed");
+            } finally {
+              if (mounted) setState(() => _loading = false);
+            }
           },
           child: Container(
             width: double.infinity,

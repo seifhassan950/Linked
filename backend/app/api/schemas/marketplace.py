@@ -16,7 +16,9 @@ class AssetOut(BaseModel):
     visibility: str
     published_at: str | None = None
     thumb_object_key: str | None = None
+    thumb_url: str | None = None
     model_object_key: str
+    preview_url: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 class AssetCreateIn(BaseModel):

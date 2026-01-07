@@ -209,8 +209,15 @@ class _SignUpState extends State<SignUp> {
             setState(() => _loading = true);
             try {
               await r2vAuth.signup(email: e, password: p1, username: u);
+              final verification = await r2vEmailVerification.requestCode(e);
               if (!mounted) return;
-              Navigator.pushNamed(context, '/home');
+              if (verification.devCode != null &&
+                  verification.devCode!.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Verification code: ${verification.devCode}')),
+                );
+              }
+              Navigator.pushNamed(context, '/verifycode', arguments: e);
             } on ApiException catch (ex) {
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(

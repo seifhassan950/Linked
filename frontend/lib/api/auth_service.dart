@@ -9,6 +9,7 @@ class AuthService {
     required String email,
     required String password,
     required String username,
+    bool persist = true,
   }) async {
     final data = await _api.postJson('/auth/signup', auth: false, body: {
       'email': email,
@@ -19,12 +20,14 @@ class AuthService {
     await _api.tokenStore.saveTokens(
       accessToken: (data['access_token'] ?? '').toString(),
       refreshToken: (data['refresh_token'] ?? '').toString(),
+      persist: persist,
     );
   }
 
   Future<void> login({
     required String email,
     required String password,
+    bool persist = true,
   }) async {
     final data = await _api.postJson('/auth/login', auth: false, body: {
       'email': email,
@@ -34,6 +37,7 @@ class AuthService {
     await _api.tokenStore.saveTokens(
       accessToken: (data['access_token'] ?? '').toString(),
       refreshToken: (data['refresh_token'] ?? '').toString(),
+      persist: persist,
     );
   }
 
@@ -52,5 +56,11 @@ class AuthService {
 
   Future<Map<String, dynamic>> me() async {
     return _api.getJson('/me', auth: true);
+  }
+
+  Future<void> changePassword(String newPassword) async {
+    await _api.postJson('/auth/password/change', auth: true, body: {
+      'new_password': newPassword,
+    });
   }
 }

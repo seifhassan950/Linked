@@ -17,3 +17,24 @@ class TokenOut(BaseModel):
 
 class RefreshIn(BaseModel):
     refresh_token: str
+
+class EmailIn(BaseModel):
+    email: EmailStr
+
+class VerifyCodeIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+
+class VerificationOut(BaseModel):
+    detail: str = "ok"
+    dev_code: str | None = None
+
+class PasswordResetVerifyOut(BaseModel):
+    reset_token: str
+
+class PasswordResetIn(BaseModel):
+    reset_token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+class ChangePasswordIn(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)

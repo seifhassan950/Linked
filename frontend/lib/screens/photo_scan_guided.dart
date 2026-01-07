@@ -9,6 +9,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
+import '../api/scan_jobs_service.dart';
 
 class PhotoScanGuidedScreen extends StatefulWidget {
   const PhotoScanGuidedScreen({Key? key}) : super(key: key);
@@ -38,6 +41,8 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
   // ---------- upload state ----------
   Uint8List? _webPickedBytes;
   String? _webPickedName;
+  final List<ScanUpload> _pendingUploads = [];
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -93,9 +98,11 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
 
     setState(() => _capturing = true);
     try {
-      await _cam!.takePicture();
+      final file = await _cam!.takePicture();
+      final bytes = await file.readAsBytes();
+      _addUpload(file.name, bytes);
       if (!mounted) return;
-      setState(() => _photoCount++);
+      setState(() => _photoCount = _pendingUploads.length);
     } catch (e) {
       debugPrint("Capture error: $e");
     } finally {
@@ -114,13 +121,15 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
       final x = await picker.pickImage(source: ImageSource.gallery, imageQuality: 92);
       if (x == null) return;
 
-      // For your pipeline: you can send x.path to backend / next screen
+      final bytes = await x.readAsBytes();
+      _addUpload(x.name, bytes);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Selected: ${x.name}"),
           behavior: SnackBarBehavior.floating,
         ),
       );
+      setState(() => _photoCount = _pendingUploads.length);
     } catch (e) {
       debugPrint("Gallery pick error: $e");
     }
@@ -145,35 +154,74 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
     setState(() {
       _webPickedBytes = f.bytes;
       _webPickedName = f.name;
+      if (f.bytes != null) {
+        _pendingUploads.clear();
+        _addUpload(f.name, f.bytes!);
+      }
     });
   }
 
-  void _finish() {
-    if (kIsWeb) {
-      if (_webPickedBytes == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Upload at least one image first."),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
+  void _addUpload(String filename, Uint8List bytes) {
+    final type = _contentTypeForFilename(filename);
+    _pendingUploads.add(ScanUpload(filename: filename, bytes: bytes, contentType: type));
+  }
+
+  String _contentTypeForFilename(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  Future<void> _finish() async {
+    if (_pendingUploads.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Ready: $_webPickedName"),
+        const SnackBar(
+          content: Text("Upload at least one image first."),
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Captured $_photoCount photos — ready for next step."),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    setState(() => _uploading = true);
+    try {
+      final job = await r2vScanJobs.createJob(kind: 'photos');
+      for (final upload in _pendingUploads) {
+        final url = await r2vScanJobs.presignUpload(
+          jobId: job.id,
+          filename: upload.filename,
+          contentType: upload.contentType,
+        );
+        await r2vScanJobs.uploadToPresignedUrl(url, upload.bytes, upload.contentType);
+      }
+      final started = await r2vScanJobs.startJob(job.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Scan started (status: ${started.status})"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      setState(() {
+        _pendingUploads.clear();
+        _photoCount = 0;
+        _webPickedBytes = null;
+        _webPickedName = null;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Upload failed")),
+      );
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 
   @override
@@ -280,7 +328,7 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                           const SizedBox(width: 10),
                                           Expanded(
                                             child: ElevatedButton(
-                                              onPressed: _finish,
+                                              onPressed: _uploading ? null : _finish,
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: accent2,
                                                 foregroundColor: Colors.white,
@@ -392,7 +440,7 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                                       _SmallGlassButton(
                                                         icon: Icons.check_rounded,
                                                         label: "Finish",
-                                                        onTap: _finish,
+                                                        onTap: _uploading ? null : _finish,
                                                         accent: green,
                                                       ),
                                                     ],

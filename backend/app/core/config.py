@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     jwt_audience: str = "r2v-client"
     access_token_expires_min: int = 30
     refresh_token_expires_days: int = 30
+    verification_code_expires_min: int = 15
+    password_reset_expires_min: int = 30
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
     stripe_subscription_price_id: str = ""
 
     allowed_origins: str = "http://localhost:55509"
+    allowed_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     env: str = "dev"
     log_level: str = "INFO"
 

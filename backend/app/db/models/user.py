@@ -37,3 +37,15 @@ class RefreshToken(Base):
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+
+class VerificationCode(Base):
+    __tablename__ = "verification_codes"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    purpose: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    token_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc), nullable=False)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
