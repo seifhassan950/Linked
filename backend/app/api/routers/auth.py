@@ -60,6 +60,11 @@ def signup(payload: SignupIn, db: Session = Depends(get_db)):
     exists = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
     if exists:
         conflict("Email already registered")
+    username_exists = db.execute(
+        select(UserProfile).where(UserProfile.username == payload.username)
+    ).scalar_one_or_none()
+    if username_exists:
+        conflict("Username already taken")
     user = User(email=payload.email, password_hash=hash_password(payload.password), role="user", is_active=True)
     user.profile = UserProfile(username=payload.username, bio=None, avatar_url=None, links=None)
     db.add(user); db.flush()
