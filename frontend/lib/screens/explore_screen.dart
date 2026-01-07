@@ -828,7 +828,6 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       await r2vMarketplace.uploadToPresignedUrl(
         modelPresign['url']!,
         _modelBytes!,
-        modelMime,
       );
 
       final thumbName = _thumbnailName ?? 'thumbnail.png';
@@ -844,7 +843,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       await r2vMarketplace.uploadToPresignedUrl(
         thumbPresign['url']!,
         _thumbnailBytes!,
-        thumbMime,
+        contentType: thumbMime,
       );
 
       final asset = await r2vMarketplace.createAsset(
@@ -866,6 +865,9 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       _showSnack('Asset uploaded to marketplace.');
     } on ApiException catch (e) {
       _showSnack(e.message);
+    } on Exception catch (e) {
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      _showSnack(message.isEmpty ? 'Unable to upload asset' : message);
     } catch (_) {
       _showSnack('Unable to upload asset');
     } finally {
