@@ -45,6 +45,7 @@ class _WebProfile extends StatefulWidget {
 class _WebProfileState extends State<_WebProfile> {
   int _activeIndex = 0; // Home is 0 for top tabs, but we keep highlight on Profile separately
   int? _hoverIndex;
+  ProfileTab _activeTab = ProfileTab.posts;
 
   late String displayName;
   String displayRole = "Designer · 3D Artist";
@@ -317,12 +318,24 @@ class _WebProfileState extends State<_WebProfile> {
             border: Border.all(color: Colors.white.withOpacity(0.10)),
           ),
           child: Row(
-            children: const [
-              _TabChip(label: "Posts", active: true),
-              SizedBox(width: 10),
-              _TabChip(label: "Saved"),
-              SizedBox(width: 10),
-              _TabChip(label: "Liked"),
+            children: [
+              _TabChip(
+                label: "Posts",
+                active: _activeTab == ProfileTab.posts,
+                onTap: () => setState(() => _activeTab = ProfileTab.posts),
+              ),
+              const SizedBox(width: 10),
+              _TabChip(
+                label: "Saved",
+                active: _activeTab == ProfileTab.saved,
+                onTap: () => setState(() => _activeTab = ProfileTab.saved),
+              ),
+              const SizedBox(width: 10),
+              _TabChip(
+                label: "Liked",
+                active: _activeTab == ProfileTab.liked,
+                onTap: () => setState(() => _activeTab = ProfileTab.liked),
+              ),
             ],
           ),
         ),
@@ -331,6 +344,12 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Widget _glassGrid() {
+    if (_activeTab != ProfileTab.posts) {
+      return _emptyTabState(
+        title: _activeTab == ProfileTab.saved ? "No saved assets yet." : "No liked assets yet.",
+        onAction: () => Navigator.pushNamed(context, '/explore'),
+      );
+    }
     return Wrap(
       spacing: 14,
       runSpacing: 14,
@@ -379,6 +398,36 @@ class _WebProfileState extends State<_WebProfile> {
       ),
     );
   }
+
+  Widget _emptyTabState({
+    required String title,
+    required VoidCallback onAction,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.bookmark_border_rounded, color: Colors.white.withOpacity(0.5), size: 40),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: TextStyle(color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: onAction,
+            child: const Text("Browse Marketplace", style: TextStyle(color: Color(0xFF4CC9F0))),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ──────────────────────────────────────────────────────────
@@ -400,6 +449,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   String? avatarUrl;
   Map<String, dynamic> _meta = {};
   bool _loadingProfile = false;
+  ProfileTab _activeTab = ProfileTab.posts;
 
   @override
   void initState() {
@@ -610,12 +660,24 @@ class _MobileProfileState extends State<_MobileProfile> {
             border: Border.all(color: Colors.white.withOpacity(0.10)),
           ),
           child: Row(
-            children: const [
-              _TabChip(label: "Posts", active: true),
-              SizedBox(width: 10),
-              _TabChip(label: "Saved"),
-              SizedBox(width: 10),
-              _TabChip(label: "Liked"),
+            children: [
+              _TabChip(
+                label: "Posts",
+                active: _activeTab == ProfileTab.posts,
+                onTap: () => setState(() => _activeTab = ProfileTab.posts),
+              ),
+              const SizedBox(width: 10),
+              _TabChip(
+                label: "Saved",
+                active: _activeTab == ProfileTab.saved,
+                onTap: () => setState(() => _activeTab = ProfileTab.saved),
+              ),
+              const SizedBox(width: 10),
+              _TabChip(
+                label: "Liked",
+                active: _activeTab == ProfileTab.liked,
+                onTap: () => setState(() => _activeTab = ProfileTab.liked),
+              ),
             ],
           ),
         ),
@@ -624,6 +686,12 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Widget _mobileGrid() {
+    if (_activeTab != ProfileTab.posts) {
+      return _mobileEmptyState(
+        title: _activeTab == ProfileTab.saved ? "No saved assets yet." : "No liked assets yet.",
+        onAction: () => Navigator.pushNamed(context, '/explore'),
+      );
+    }
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -643,6 +711,36 @@ class _MobileProfileState extends State<_MobileProfile> {
           child: const Icon(Icons.image_rounded, color: Colors.white30),
         );
       },
+    );
+  }
+
+  Widget _mobileEmptyState({
+    required String title,
+    required VoidCallback onAction,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.bookmark_border_rounded, color: Colors.white.withOpacity(0.5), size: 32),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          TextButton(
+            onPressed: onAction,
+            child: const Text("Browse Marketplace", style: TextStyle(color: Color(0xFF4CC9F0))),
+          ),
+        ],
+      ),
     );
   }
 
@@ -672,25 +770,32 @@ class _MobileProfileState extends State<_MobileProfile> {
 class _TabChip extends StatelessWidget {
   final String label;
   final bool active;
-  const _TabChip({required this.label, this.active = false});
+  final VoidCallback? onTap;
+  const _TabChip({required this.label, this.active = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: active ? const LinearGradient(colors: [Color(0xFF8A4FFF), Color(0xFFBC70FF)]) : null,
-        color: active ? null : Colors.white.withOpacity(0.06),
-        border: Border.all(color: Colors.white.withOpacity(0.14)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: active ? const LinearGradient(colors: [Color(0xFF8A4FFF), Color(0xFFBC70FF)]) : null,
+          color: active ? null : Colors.white.withOpacity(0.06),
+          border: Border.all(color: Colors.white.withOpacity(0.14)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+        ),
       ),
     );
   }
 }
+
+enum ProfileTab { posts, saved, liked }
 
 class _MStat extends StatelessWidget {
   final String value;
