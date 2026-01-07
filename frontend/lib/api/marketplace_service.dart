@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
+
 import 'api_client.dart';
 
 class MarketplaceAsset {
@@ -100,5 +104,76 @@ class MarketplaceService {
   Future<String> downloadAsset(String assetId) async {
     final data = await _api.getJson('/assets/$assetId/download', auth: true);
     return data['url']?.toString() ?? '';
+  }
+
+  Future<Map<String, String>> presignAssetUpload({
+    required String filename,
+    required String contentType,
+    required String kind,
+  }) async {
+    final data = await _api.postJson(
+      '/marketplace/assets/presign',
+      auth: true,
+      body: {
+        'filename': filename,
+        'content_type': contentType,
+        'kind': kind,
+      },
+    );
+    return {
+      'url': data['url']?.toString() ?? '',
+      'key': data['key']?.toString() ?? '',
+    };
+  }
+
+  Future<void> uploadToPresignedUrl(String url, Uint8List bytes, String contentType) async {
+    final res = await http.put(
+      Uri.parse(url),
+      headers: {'Content-Type': contentType},
+      body: bytes,
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Upload failed (${res.statusCode})');
+    }
+  }
+
+  Future<MarketplaceAsset> createAsset({
+    required String title,
+    required String description,
+    required List<String> tags,
+    required String category,
+    required String style,
+    required bool isPaid,
+    required int price,
+    required String currency,
+    required String modelObjectKey,
+    required String? thumbObjectKey,
+    required List<String> previewObjectKeys,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final data = await _api.postJson(
+      '/marketplace/assets',
+      auth: true,
+      body: {
+        'title': title,
+        'description': description,
+        'tags': tags,
+        'category': category,
+        'style': style,
+        'is_paid': isPaid,
+        'price': price,
+        'currency': currency,
+        'model_object_key': modelObjectKey,
+        'thumb_object_key': thumbObjectKey,
+        'preview_object_keys': previewObjectKeys,
+        'metadata': metadata ?? {},
+      },
+    );
+    return MarketplaceAsset.fromJson(data);
+  }
+
+  Future<MarketplaceAsset> publishAsset(String assetId) async {
+    final data = await _api.postJson('/marketplace/assets/$assetId/publish', auth: true);
+    return MarketplaceAsset.fromJson(data);
   }
 }
