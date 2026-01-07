@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 from app.api.deps import get_db, get_current_user
-from app.api.schemas.common import PresignedURL
+from app.api.schemas.common import PresignedURL, PresignIn
 from app.api.schemas.jobs import ScanJobCreateIn, JobOut, DownloadOut
 from app.core.errors import not_found, forbidden, bad_request
 from app.db.models.jobs import ScanJob
@@ -18,6 +18,7 @@ def to_job_out(j: ScanJob) -> JobOut:
     return JobOut(
         id=str(j.id), status=j.status, progress=j.progress,
         created_at=j.created_at.isoformat(), updated_at=j.updated_at.isoformat() if j.updated_at else None,
+        prompt=None,
         metadata=j.job_metadata or {}, output_glb_key=j.output_glb_key, output_stl_key=j.output_stl_key,
         preview_keys=j.preview_keys or [], error=j.error
     )
@@ -31,11 +32,11 @@ def create_scan_job(payload: ScanJobCreateIn, db: Session = Depends(get_db), use
     return to_job_out(job)
 
 @router.post("/jobs/{job_id}/presign", response_model=PresignedURL)
-def presign_upload(job_id: str, filename: str, content_type: str = "application/octet-stream", db: Session = Depends(get_db), user = Depends(get_current_user)):
+def presign_upload(job_id: str, payload: PresignIn, db: Session = Depends(get_db), user = Depends(get_current_user)):
     j = db.get(ScanJob, job_id)
     if not j: not_found()
     if j.user_id != user.id: forbidden()
-    key = f"{user.id}/{job_id}/inputs/{uuid.uuid4()}_{filename}"
+    key = f"{user.id}/{job_id}/inputs/{uuid.uuid4()}_{payload.filename}"
     url = s3.presign_put(settings.s3_bucket_scans_raw, key, expires=3600)
     # store key in job
     keys = list(j.input_keys or [])

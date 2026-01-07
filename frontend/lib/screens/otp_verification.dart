@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class OTPVerification extends StatefulWidget {
   final String email;
@@ -13,6 +15,7 @@ class OTPVerification extends StatefulWidget {
 class _OTPVerificationState extends State<OTPVerification> {
   final List<TextEditingController> otp =
       List.generate(4, (_) => TextEditingController());
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -168,7 +171,9 @@ class _OTPVerificationState extends State<OTPVerification> {
         // VERIFY BUTTON
         //---------------------------------
         GestureDetector(
-          onTap: () {
+          onTap: _loading
+              ? null
+              : () async {
             String code = otp.map((c) => c.text).join();
 
             if (code.length != 4) {
@@ -178,7 +183,24 @@ class _OTPVerificationState extends State<OTPVerification> {
               return;
             }
 
-            Navigator.pushNamed(context, "/setnewpass");
+            setState(() => _loading = true);
+            try {
+              final resetToken = await r2vPasswordReset.verifyCode(widget.email, code);
+              if (!mounted) return;
+              Navigator.pushNamed(context, "/setnewpass", arguments: resetToken);
+            } on ApiException catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(e.message)),
+              );
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Verification failed')),
+              );
+            } finally {
+              if (mounted) setState(() => _loading = false);
+            }
           },
           child: Container(
             width: double.infinity,
@@ -212,7 +234,36 @@ class _OTPVerificationState extends State<OTPVerification> {
         //---------------------------------
         Center(
           child: TextButton(
-            onPressed: () {},
+            onPressed: _loading
+                ? null
+                : () async {
+                    setState(() => _loading = true);
+                    try {
+                      final res = await r2vPasswordReset.requestReset(widget.email);
+                      if (!mounted) return;
+                      if (res.devCode != null && res.devCode!.isNotEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Verification code: ${res.devCode}')),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Verification code resent')),
+                        );
+                      }
+                    } on ApiException catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.message)),
+                      );
+                    } catch (_) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to resend code')),
+                      );
+                    } finally {
+                      if (mounted) setState(() => _loading = false);
+                    }
+                  },
             child: const Text(
               "Resend Code",
               style: TextStyle(

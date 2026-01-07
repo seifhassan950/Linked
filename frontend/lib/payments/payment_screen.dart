@@ -4,9 +4,13 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../api/marketplace_service.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class PaymentScreen extends StatefulWidget {
-  final Map<String, String> asset;
+  final MarketplaceAsset asset;
 
   const PaymentScreen({super.key, required this.asset});
 
@@ -16,12 +20,12 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   int _methodIndex = 0;
+  bool _loading = false;
 
   bool get _isWeb => MediaQuery.of(context).size.width >= 900;
 
   double _priceValue() {
-    final raw = (widget.asset["price"] ?? "0").trim();
-    return double.tryParse(raw) ?? 0.0;
+    return widget.asset.price.toDouble();
   }
 
   bool _isFree() => _priceValue() <= 0.0;
@@ -41,11 +45,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.asset["name"] ?? "Checkout";
-    final author = widget.asset["author"] ?? "";
-    final poster = widget.asset["poster"] ?? "";
-    final tag = widget.asset["tag"] ?? "";
-    final style = widget.asset["style"] ?? "";
+    final name = widget.asset.title.isNotEmpty ? widget.asset.title : "Checkout";
+    final author = widget.asset.author;
+    final poster = widget.asset.thumbUrl ?? "";
+    final tag = widget.asset.category;
+    final style = widget.asset.style;
 
     final priceText = _priceLabel();
     final free = _isFree();
@@ -101,7 +105,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                     color: Colors.white.withOpacity(0.06),
                                     child: poster.isEmpty
                                         ? Icon(Icons.image, color: Colors.white.withOpacity(0.35))
-                                        : Image.asset(
+                                        : Image.network(
                                             poster,
                                             fit: BoxFit.cover,
                                             errorBuilder: (_, __, ___) => Icon(
@@ -258,17 +262,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: ElevatedButton(
-                                    onPressed: () {
-                                      if (free) {
-                                        _toast("Starting download: ${widget.asset["name"] ?? ""}");
-                                        // TODO: your team connects real download
-                                        Navigator.pop(context);
-                                      } else {
-                                        final method = ["Card", "Wallet", "Bank Transfer"][_methodIndex];
-                                        _toast("Proceed to pay $priceText using $method (UI only)");
-                                        // TODO: your team connects payment_webview / gateway
-                                      }
-                                    },
+                                    onPressed: _loading
+                                        ? null
+                                        : () async {
+                                            setState(() => _loading = true);
+                                            try {
+                                              if (free) {
+                                                final url = await r2vMarketplace.downloadAsset(widget.asset.id);
+                                                if (url.isEmpty) {
+                                                  throw Exception('Missing download url');
+                                                }
+                                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                              } else {
+                                                final url = await r2vMarketplace.checkoutAsset(widget.asset.id);
+                                                if (url.isEmpty) {
+                                                  throw Exception('Missing checkout url');
+                                                }
+                                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                              }
+                                            } on ApiException catch (e) {
+                                              _toast(e.message);
+                                            } catch (_) {
+                                              _toast("Checkout failed");
+                                            } finally {
+                                              if (mounted) setState(() => _loading = false);
+                                            }
+                                          },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: free ? const Color(0xFF22C55E) : const Color(0xFF8A4FFF),
                                       foregroundColor: Colors.white,

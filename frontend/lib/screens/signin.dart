@@ -188,7 +188,11 @@ class _SignInState extends State<SignIn> {
                   final email = _email.text.trim();
                   final pass = _password.text;
                   try {
-                    await r2vAuth.login(email: email, password: pass);
+                    await r2vAuth.login(
+                      email: email,
+                      password: pass,
+                      persist: _rememberMe,
+                    );
                     if (!mounted) return;
                     Navigator.pushNamed(context, '/home');
                   } on ApiException catch (e) {

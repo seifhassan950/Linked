@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 void main() {
   runApp(const MyApp());
@@ -26,8 +28,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       scrollBehavior: const AppScrollBehavior(),
       routes: {
-        '/': (_) => const HomeScreen(username: 'user'),
-        '/home': (_) => const HomeScreen(username: 'user'),
+        '/': (_) => const HomeScreen(),
+        '/home': (_) => const HomeScreen(),
         '/aichat': (_) => const Scaffold(body: Center(child: Text('AI Chat'))),
         '/explore': (_) => const Scaffold(body: Center(child: Text('Explore'))),
         '/settings': (_) => const Scaffold(body: Center(child: Text('Settings'))),
@@ -80,7 +82,7 @@ class MarketModel {
 class HomeScreen extends StatefulWidget {
   final String username;
 
-  const HomeScreen({super.key, required this.username});
+  const HomeScreen({super.key, this.username = 'User'});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -108,12 +110,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// ✅ popup selected model
   MarketModel? _activeMarketModel;
+  bool _loadingSummary = false;
+  String _displayName = '';
 
   // ------------------------------------------------------------------
   // ✅ DATA: Continue / Stats
   // ------------------------------------------------------------------
   // (1) Continue section (last items)
-  final Map<String, dynamic> _continueAI = const {
+  Map<String, dynamic> _continueAI = {
     "title": "Neon sci-fi car in rainy alley",
     "subtitle": "Last prompt • 2 hours ago",
     "route": "/aichat",
@@ -121,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
     "icon": Icons.bolt_rounded,
   };
 
-  final Map<String, dynamic> _continueScan = const {
+  Map<String, dynamic> _continueScan = {
     "title": "Vintage Chair Scan",
     "subtitle": "Draft scan • 10 minutes ago",
     "route": "/photo_scan",
@@ -129,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
     "icon": Icons.photo_camera_rounded,
   };
 
-  final Map<String, dynamic> _continueMarket = const {
+  Map<String, dynamic> _continueMarket = {
     "title": "Porsche 911 Asset",
     "subtitle": "Last viewed • yesterday",
     "route": "/explore",
@@ -138,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
   };
 
   // (7) Stats mini cards
-  final Map<String, int> _stats = const {
+  Map<String, int> _stats = {
     "Models": 12,
     "Scans": 5,
     "Downloads": 9,
@@ -252,6 +256,75 @@ class _HomeScreenState extends State<HomeScreen> {
     _useCaseScrollController = ScrollController();
 
     _startUseCaseAutoSwitch();
+    _displayName = widget.username;
+    _loadSummary();
+  }
+
+  Future<void> _loadSummary() async {
+    setState(() => _loadingSummary = true);
+    try {
+      final profile = await r2vProfile.me();
+      final dashboard = await r2vDashboard.me();
+      final aiJobs = await r2vAiJobs.listJobs(limit: 1);
+      final scanJobs = await r2vScanJobs.listJobs(limit: 1);
+      final assets = await r2vMarketplace.listAssets(limit: 1);
+
+      if (!mounted) return;
+
+      setState(() {
+        _displayName = profile.username.isNotEmpty ? profile.username : _displayName;
+        _stats = {
+          "Models": dashboard.assets,
+          "Scans": dashboard.scanJobs,
+          "Downloads": dashboard.downloads,
+        };
+
+        if (aiJobs.isNotEmpty) {
+          final job = aiJobs.first;
+          _continueAI = {
+            "title": job.prompt?.isNotEmpty == true ? job.prompt! : "AI job ${job.id}",
+            "subtitle": "Status: ${job.status}",
+            "route": "/aichat",
+            "accent": const Color(0xFF8A4FFF),
+            "icon": Icons.bolt_rounded,
+          };
+        }
+
+        if (scanJobs.isNotEmpty) {
+          final job = scanJobs.first;
+          _continueScan = {
+            "title": "Scan job ${job.id}",
+            "subtitle": "Status: ${job.status}",
+            "route": "/photo_scan",
+            "accent": const Color(0xFFF72585),
+            "icon": Icons.photo_camera_rounded,
+          };
+        }
+
+        if (assets.isNotEmpty) {
+          final asset = assets.first;
+          _continueMarket = {
+            "title": asset.title,
+            "subtitle": asset.category,
+            "route": "/explore",
+            "accent": const Color(0xFF4895EF),
+            "icon": Icons.storefront_rounded,
+          };
+        }
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load dashboard')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingSummary = false);
+    }
   }
 
   void _onScroll() {
@@ -593,7 +666,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Welcome back, @${widget.username}",
+                  "Welcome back, @$_displayName",
                   style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 15),
                 ),
                 const SizedBox(height: 10),
@@ -942,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Welcome back, @${widget.username}",
+                "Welcome back, @$_displayName",
                 style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
               ),
               const SizedBox(height: 8),

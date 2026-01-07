@@ -41,3 +41,9 @@ def update_me(payload: MeUpdateIn, db: Session = Depends(get_db), user = Depends
         profile.links = payload.links
     db.commit(); db.refresh(user)
     return get_me(user)
+
+@router.delete("/me")
+def delete_me(db: Session = Depends(get_db), user = Depends(get_current_user)):
+    db.delete(user)
+    db.commit()
+    return {"detail": "ok"}

@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class AIChatScreen extends StatefulWidget {
   const AIChatScreen({super.key});
@@ -179,6 +182,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty && uploadedImage == null) return;
 
+    final image = uploadedImage;
     setState(() {
       _activeConversation.messages.add(
         _ChatMessage(text.isEmpty ? "[Image Uploaded]" : text, uploadedImage, true),
@@ -197,21 +201,24 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     _scrollToBottom();
 
-    await Future.delayed(const Duration(milliseconds: 320));
+    final prompt = text.isEmpty ? "Image upload" : text;
+    final settings = <String, dynamic>{};
+    final bytes = image?.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      settings['image_filename'] = image?.name ?? 'upload.png';
+      settings['image_base64'] = base64Encode(bytes);
+    }
 
-    final response = _mockAIResponse(text);
-    await _animateTyping(response);
-  }
-
-  String _mockAIResponse(String input) {
-    return """
-Here is a polished 3D-generation prompt:
-
-“Ultra-detailed 3D model of ${input.isEmpty ? "your image" : input}, PBR textures,
-clean geometry, studio lighting, cinematic realism.”
-
-Would you like to generate?
-""";
+    try {
+      final job = await r2vAiJobs.createJob(prompt: prompt, settings: settings);
+      await _animateTyping(
+        "Job queued: ${job.id}\nStatus: ${job.status}\nWe'll notify you when it's ready.",
+      );
+    } on ApiException catch (e) {
+      await _animateTyping("Failed to create job: ${e.message}");
+    } catch (_) {
+      await _animateTyping("Failed to create job. Please try again.");
+    }
   }
 
   Future<void> _animateTyping(String text) async {

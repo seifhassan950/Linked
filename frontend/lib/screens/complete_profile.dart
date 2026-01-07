@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class CompleteProfile extends StatefulWidget {
   @override
@@ -14,6 +16,7 @@ class _CompleteProfileState extends State<CompleteProfile> {
 
   bool _obscure1 = true;
   bool _obscure2 = true;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -212,7 +215,9 @@ class _CompleteProfileState extends State<CompleteProfile> {
         // CONTINUE BUTTON
         // ------------------------------------------------------
         GestureDetector(
-          onTap: () {
+          onTap: _loading
+              ? null
+              : () async {
             if (username.text.isEmpty ||
                 phone.text.isEmpty ||
                 pass1.text.isEmpty ||
@@ -225,7 +230,30 @@ class _CompleteProfileState extends State<CompleteProfile> {
               return;
             }
 
-            Navigator.pushNamed(context, '/home');
+            setState(() => _loading = true);
+            try {
+              final current = await r2vProfile.me();
+              final meta = Map<String, dynamic>.from(current.meta);
+              meta['phone'] = phone.text.trim();
+              await r2vProfile.update(
+                username: username.text.trim(),
+                meta: meta,
+              );
+              await r2vAuth.changePassword(pass1.text);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Profile updated')),
+              );
+              Navigator.pushNamed(context, '/home');
+            } on ApiException catch (e) {
+              if (!mounted) return;
+              _error(e.message);
+            } catch (_) {
+              if (!mounted) return;
+              _error("Profile update failed");
+            } finally {
+              if (mounted) setState(() => _loading = false);
+            }
           },
           child: Container(
             width: double.infinity,

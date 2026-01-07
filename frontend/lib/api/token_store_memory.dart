@@ -11,7 +11,11 @@ class TokenStoreImpl implements TokenStore {
   Future<String?> getRefreshToken() async => _refresh;
 
   @override
-  Future<void> saveTokens({required String accessToken, required String refreshToken}) async {
+  Future<void> saveTokens({
+    required String accessToken,
+    required String refreshToken,
+    bool persist = true,
+  }) async {
     _access = accessToken;
     _refresh = refreshToken;
   }

@@ -6,7 +6,11 @@ import 'token_store_memory.dart'
 abstract class TokenStore {
   Future<String?> getAccessToken();
   Future<String?> getRefreshToken();
-  Future<void> saveTokens({required String accessToken, required String refreshToken});
+  Future<void> saveTokens({
+    required String accessToken,
+    required String refreshToken,
+    bool persist = true,
+  });
   Future<void> clear();
 }
 

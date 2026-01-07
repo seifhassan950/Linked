@@ -18,6 +18,7 @@ class JobOut(BaseModel):
     progress: int
     created_at: str
     updated_at: str | None = None
+    prompt: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     output_glb_key: str | None = None
     output_stl_key: str | None = None

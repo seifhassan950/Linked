@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:math';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -7,11 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/scheduler.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
 
-  const ProfileScreen({super.key, required this.username});
+  const ProfileScreen({super.key, this.username = 'User'});
 
   @override
   Widget build(BuildContext context) {
@@ -47,15 +50,59 @@ class _WebProfileState extends State<_WebProfile> {
   String displayRole = "Designer · 3D Artist";
   String displayBio = "I create 3D content using AI & real-world photogrammetry tools.";
   Uint8List? avatarBytes;
+  String? avatarUrl;
+  Map<String, dynamic> _meta = {};
+  bool _loadingProfile = false;
 
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
+    _loadProfile();
   }
 
-  void _openEditProfileDialog() {
-    showDialog(
+  Future<void> _loadProfile() async {
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await r2vProfile.me();
+      if (!mounted) return;
+      setState(() {
+        displayName = profile.username.isNotEmpty ? profile.username : displayName;
+        displayBio = profile.bio ?? displayBio;
+        _meta = profile.meta;
+        displayRole = profile.meta['role']?.toString() ?? displayRole;
+        avatarUrl = profile.avatarUrl;
+        avatarBytes = _decodeAvatar(profile.avatarUrl);
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load profile')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  Uint8List? _decodeAvatar(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    if (!raw.startsWith('data:image')) return null;
+    final parts = raw.split(',');
+    if (parts.length < 2) return null;
+    try {
+      return base64Decode(parts.last);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openEditProfileDialog() async {
+    await showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) {
@@ -64,18 +111,52 @@ class _WebProfileState extends State<_WebProfile> {
           initialRole: displayRole,
           initialBio: displayBio,
           initialAvatar: avatarBytes,
-          onSave: (name, role, bio, bytes) {
-            setState(() {
-              displayName = name;
-              displayRole = role;
-              displayBio = bio;
-              avatarBytes = bytes;
-            });
-            Navigator.of(context).pop();
-          },
+          onSave: _saveProfile,
         );
       },
     );
+  }
+
+  Future<void> _saveProfile(String name, String role, String bio, Uint8List? bytes) async {
+    final nextMeta = Map<String, dynamic>.from(_meta);
+    nextMeta['role'] = role;
+    final avatarDataUrl = bytes == null ? avatarUrl : _toDataUrl(bytes);
+    setState(() => _loadingProfile = true);
+    try {
+      final updated = await r2vProfile.update(
+        username: name,
+        bio: bio,
+        avatarUrl: avatarDataUrl,
+        meta: nextMeta,
+      );
+      if (!mounted) return;
+      setState(() {
+        displayName = updated.username;
+        displayBio = updated.bio ?? displayBio;
+        displayRole = updated.meta['role']?.toString() ?? displayRole;
+        _meta = updated.meta;
+        avatarUrl = updated.avatarUrl;
+        avatarBytes = _decodeAvatar(updated.avatarUrl) ?? bytes;
+      });
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update profile')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  String _toDataUrl(Uint8List bytes) {
+    final encoded = base64Encode(bytes);
+    return 'data:image/png;base64,$encoded';
   }
 
   @override
@@ -292,7 +373,9 @@ class _WebProfileState extends State<_WebProfile> {
       child: ClipOval(
         child: avatarBytes != null
             ? Image.memory(avatarBytes!, fit: BoxFit.cover)
-            : const Icon(Icons.person, size: 42, color: Colors.white54),
+            : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
+                ? Image.network(avatarUrl!, fit: BoxFit.cover)
+                : const Icon(Icons.person, size: 42, color: Colors.white54)),
       ),
     );
   }
@@ -314,15 +397,59 @@ class _MobileProfileState extends State<_MobileProfile> {
   String displayRole = "3D Artist · Designer";
   String displayBio = "Building the future of AR/VR assets using AI + photogrammetry.";
   Uint8List? avatarBytes;
+  String? avatarUrl;
+  Map<String, dynamic> _meta = {};
+  bool _loadingProfile = false;
 
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
+    _loadProfile();
   }
 
-  void _openEditProfileDialog() {
-    showDialog(
+  Future<void> _loadProfile() async {
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await r2vProfile.me();
+      if (!mounted) return;
+      setState(() {
+        displayName = profile.username.isNotEmpty ? profile.username : displayName;
+        displayBio = profile.bio ?? displayBio;
+        _meta = profile.meta;
+        displayRole = profile.meta['role']?.toString() ?? displayRole;
+        avatarUrl = profile.avatarUrl;
+        avatarBytes = _decodeAvatar(profile.avatarUrl);
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load profile')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  Uint8List? _decodeAvatar(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    if (!raw.startsWith('data:image')) return null;
+    final parts = raw.split(',');
+    if (parts.length < 2) return null;
+    try {
+      return base64Decode(parts.last);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openEditProfileDialog() async {
+    await showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) {
@@ -331,18 +458,52 @@ class _MobileProfileState extends State<_MobileProfile> {
           initialRole: displayRole,
           initialBio: displayBio,
           initialAvatar: avatarBytes,
-          onSave: (name, role, bio, bytes) {
-            setState(() {
-              displayName = name;
-              displayRole = role;
-              displayBio = bio;
-              avatarBytes = bytes;
-            });
-            Navigator.of(context).pop();
-          },
+          onSave: _saveProfile,
         );
       },
     );
+  }
+
+  Future<void> _saveProfile(String name, String role, String bio, Uint8List? bytes) async {
+    final nextMeta = Map<String, dynamic>.from(_meta);
+    nextMeta['role'] = role;
+    final avatarDataUrl = bytes == null ? avatarUrl : _toDataUrl(bytes);
+    setState(() => _loadingProfile = true);
+    try {
+      final updated = await r2vProfile.update(
+        username: name,
+        bio: bio,
+        avatarUrl: avatarDataUrl,
+        meta: nextMeta,
+      );
+      if (!mounted) return;
+      setState(() {
+        displayName = updated.username;
+        displayBio = updated.bio ?? displayBio;
+        displayRole = updated.meta['role']?.toString() ?? displayRole;
+        _meta = updated.meta;
+        avatarUrl = updated.avatarUrl;
+        avatarBytes = _decodeAvatar(updated.avatarUrl) ?? bytes;
+      });
+      Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update profile')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  String _toDataUrl(Uint8List bytes) {
+    final encoded = base64Encode(bytes);
+    return 'data:image/png;base64,$encoded';
   }
 
   @override
@@ -497,7 +658,9 @@ class _MobileProfileState extends State<_MobileProfile> {
       child: ClipOval(
         child: avatarBytes != null
             ? Image.memory(avatarBytes!, fit: BoxFit.cover)
-            : const Icon(Icons.person, size: 52, color: Colors.white54),
+            : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
+                ? Image.network(avatarUrl!, fit: BoxFit.cover)
+                : const Icon(Icons.person, size: 52, color: Colors.white54)),
       ),
     );
   }
@@ -736,7 +899,7 @@ class _EditProfileDialog extends StatefulWidget {
   final String initialRole;
   final String initialBio;
   final Uint8List? initialAvatar;
-  final void Function(String name, String role, String bio, Uint8List? avatarBytes) onSave;
+  final Future<void> Function(String name, String role, String bio, Uint8List? avatarBytes) onSave;
 
   const _EditProfileDialog({
     required this.initialName,
@@ -757,6 +920,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
 
   Uint8List? _avatarBytes;
   final ImagePicker _imagePicker = ImagePicker();
+  bool _saving = false;
 
   @override
   void initState() {
@@ -878,14 +1042,18 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
                       ),
                       const Spacer(),
                       ElevatedButton(
-                        onPressed: () {
-                          widget.onSave(
-                            _nameController.text.trim().isEmpty ? widget.initialName : _nameController.text.trim(),
-                            _roleController.text.trim().isEmpty ? widget.initialRole : _roleController.text.trim(),
-                            _bioController.text.trim().isEmpty ? widget.initialBio : _bioController.text.trim(),
-                            _avatarBytes,
-                          );
-                        },
+                        onPressed: _saving
+                            ? null
+                            : () async {
+                                setState(() => _saving = true);
+                                await widget.onSave(
+                                  _nameController.text.trim().isEmpty ? widget.initialName : _nameController.text.trim(),
+                                  _roleController.text.trim().isEmpty ? widget.initialRole : _roleController.text.trim(),
+                                  _bioController.text.trim().isEmpty ? widget.initialBio : _bioController.text.trim(),
+                                  _avatarBytes,
+                                );
+                                if (mounted) setState(() => _saving = false);
+                              },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF8A4FFF),
                           foregroundColor: Colors.white,
@@ -893,7 +1061,13 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                           elevation: 0,
                         ),
-                        child: const Text("Save", style: TextStyle(fontWeight: FontWeight.w700)),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text("Save", style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ),

@@ -4,6 +4,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import '../api/r2v_api.dart';
+import '../api/api_exception.dart';
+import '../api/marketplace_service.dart';
 
 // ============================================================
 // ✅ Explore Screen (WEB: Centered 3-col grid + RIGHT details panel)
@@ -24,7 +29,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
   int? _webHoverNavIndex;
 
   String selectedCategory = "All";
-  Map<String, String>? _selectedAsset;
+  MarketplaceAsset? _selectedAsset;
+  List<MarketplaceAsset> _assets = [];
+  bool _loadingAssets = false;
+  String? _assetsError;
+  String _searchQuery = "";
 
   final List<String> _categories = const [
     "All",
@@ -36,81 +45,33 @@ class _ExploreScreenState extends State<ExploreScreen> {
     "Realistic",
   ];
 
-  // ✅ EGP prices + FREE handling (price = 0)
-  final List<Map<String, String>> _assets = const [
-    {
-      "name": "Cyberpunk Car",
-      "author": "Studio Nova",
-      "likes": "1.8k",
-      "tag": "Vehicles",
-      "style": "Stylized",
-      "model": "assets/models/cyberpunk_car.glb",
-      "poster": "assets/posters/cyberpunk_car.png",
-      "description": "A sleek cyberpunk-style car with neon lights and futuristic design.",
-      "price": "450",
-      "currency": "EGP",
-    },
-    {
-      "name": "Medieval Knight",
-      "author": "PolyForge",
-      "likes": "1.1k",
-      "tag": "Characters",
-      "style": "Realistic",
-      "model": "assets/models/medieval_knight.glb",
-      "poster": "assets/posters/medieval_knight.png",
-      "description": "A detailed medieval knight character model in full armor.",
-      "price": "0",
-      "currency": "EGP",
-    },
-    {
-      "name": "Sci-Fi Corridor",
-      "author": "NeonLab",
-      "likes": "980",
-      "tag": "Environments",
-      "style": "Stylized",
-      "model": "assets/models/scifi_corridor.glb",
-      "poster": "assets/posters/scifi_corridor.png",
-      "description": "A futuristic sci-fi corridor environment with glowing panels.",
-      "price": "799",
-      "currency": "EGP",
-    },
-    {
-      "name": "Stylized Trees",
-      "author": "VoxelArt",
-      "likes": "760",
-      "tag": "Objects",
-      "style": "Stylized",
-      "model": "assets/models/stylized_trees.glb",
-      "poster": "assets/posters/stylized_trees.png",
-      "description": "A collection of stylized tree models perfect for game environments.",
-      "price": "120",
-      "currency": "EGP",
-    },
-    {
-      "name": "Sports Sneaker",
-      "author": "Meshcraft",
-      "likes": "640",
-      "tag": "Objects",
-      "style": "Realistic",
-      "model": "assets/models/sports_sneaker.glb",
-      "poster": "assets/posters/sports_sneaker.png",
-      "description": "A high-detail 3D model of a modern sports sneaker.",
-      "price": "0.00",
-      "currency": "EGP",
-    },
-    {
-      "name": "Sci-Fi Drone",
-      "author": "Zer0-G",
-      "likes": "840",
-      "tag": "Vehicles",
-      "style": "Stylized",
-      "model": "assets/models/scifi_drone.glb",
-      "poster": "assets/posters/scifi_drone.png",
-      "description": "A sleek sci-fi drone with futuristic design elements.",
-      "price": "350",
-      "currency": "EGP",
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadAssets();
+  }
+
+  Future<void> _loadAssets() async {
+    setState(() {
+      _loadingAssets = true;
+      _assetsError = null;
+    });
+    try {
+      final data = await r2vMarketplace.listAssets(limit: 60);
+      if (!mounted) return;
+      setState(() {
+        _assets = data;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _assetsError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _assetsError = 'Failed to load marketplace');
+    } finally {
+      if (mounted) setState(() => _loadingAssets = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +189,42 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
         final cardW = (available - (gap * (cols - 1))) / cols;
 
+        if (_loadingAssets) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
+        }
+
+        if (_assetsError != null) {
+          return Center(
+            child: Column(
+              children: [
+                Text(
+                  _assetsError!,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: _loadAssets,
+                  child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (items.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text("No assets yet", style: TextStyle(color: Colors.white70)),
+            ),
+          );
+        }
+
         return Center(
           child: Wrap(
             spacing: gap,
@@ -236,12 +233,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
               return SizedBox(
                 width: cardW,
                 child: AssetCard(
-                  name: item["name"]!,
-                  author: item["author"]!,
-                  likes: item["likes"]!,
-                  tag: item["tag"]!,
-                  styleTag: item["style"]!,
-                  poster: item["poster"]!,
+                  name: item.title,
+                  author: item.author,
+                  likes: item.likes,
+                  tag: item.category,
+                  styleTag: item.style,
+                  posterUrl: item.thumbUrl,
                   priceText: priceLabelEGP(item),
                   width: cardW,
                   onTap: () => setState(() => _selectedAsset = item),
@@ -281,31 +278,59 @@ class _ExploreScreenState extends State<ExploreScreen> {
               style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
-            Column(
-              children: _filteredAssets().map((item) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: AssetCard(
-                    name: item["name"]!,
-                    author: item["author"]!,
-                    likes: item["likes"]!,
-                    tag: item["tag"]!,
-                    styleTag: item["style"]!,
-                    poster: item["poster"]!,
-                    priceText: priceLabelEGP(item),
-                    width: double.infinity,
-                    onTap: () => _openMobileDetails(item),
-                  ),
-                );
-              }).toList(),
-            ),
+            if (_loadingAssets)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              )
+            else if (_assetsError != null)
+              Center(
+                child: Column(
+                  children: [
+                    Text(_assetsError!, style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: _loadAssets,
+                      child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+                    ),
+                  ],
+                ),
+              )
+            else if (_filteredAssets().isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text("No assets yet", style: TextStyle(color: Colors.white70)),
+                ),
+              )
+            else
+              Column(
+                children: _filteredAssets().map((item) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AssetCard(
+                      name: item.title,
+                      author: item.author,
+                      likes: item.likes,
+                      tag: item.category,
+                      styleTag: item.style,
+                      posterUrl: item.thumbUrl,
+                      priceText: priceLabelEGP(item),
+                      width: double.infinity,
+                      onTap: () => _openMobileDetails(item),
+                    ),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),
     );
   }
 
-  void _openMobileDetails(Map<String, String> item) {
+  void _openMobileDetails(MarketplaceAsset item) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -549,14 +574,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
         children: [
           Icon(Icons.search_rounded, color: Colors.white.withOpacity(0.7)),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: TextField(
-              style: TextStyle(color: Colors.white),
-              decoration: InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
                 border: InputBorder.none,
                 hintText: "Search 3D assets, creators, packs...",
                 hintStyle: TextStyle(color: Colors.white54),
               ),
+              onChanged: (value) => setState(() => _searchQuery = value),
             ),
           ),
         ],
@@ -564,36 +590,53 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  List<Map<String, String>> _filteredAssets() {
-    if (selectedCategory == "All") return _assets;
-    return _assets.where((a) => a["tag"] == selectedCategory || a["style"] == selectedCategory).toList();
+  List<MarketplaceAsset> _filteredAssets() {
+    final query = _searchQuery.trim().toLowerCase();
+    Iterable<MarketplaceAsset> results = _assets;
+    if (selectedCategory != "All") {
+      results = results.where((a) => a.category == selectedCategory || a.style == selectedCategory);
+    }
+    if (query.isNotEmpty) {
+      results = results.where((a) =>
+          a.title.toLowerCase().contains(query) ||
+          a.author.toLowerCase().contains(query) ||
+          a.tags.any((t) => t.toLowerCase().contains(query)));
+    }
+    return results.toList();
   }
 
   // ============================================================
   // ✅ FREE + EGP price formatting
   // ============================================================
 
-  static bool isFree(Map<String, String> asset) {
-    final raw = (asset["price"] ?? "0").trim();
-    final p = double.tryParse(raw) ?? 0.0;
-    return p <= 0.0;
+  static bool isFree(MarketplaceAsset asset) {
+    return !asset.isPaid || asset.price <= 0;
   }
 
-  static String priceLabelEGP(Map<String, String> asset) {
-    final raw = (asset["price"] ?? "0").trim();
-    final p = double.tryParse(raw) ?? 0.0;
-    if (p <= 0.0) return "FREE";
-    final asInt = p == p.roundToDouble();
-    return asInt ? "EGP ${p.toInt()}" : "EGP ${p.toStringAsFixed(2)}";
+  static String priceLabelEGP(MarketplaceAsset asset) {
+    final p = asset.price;
+    if (p <= 0) return "FREE";
+    return "EGP $p";
   }
 
-  void _startDownload(BuildContext context, Map<String, String> asset) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Starting download: ${asset["name"] ?? ""}"),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  Future<void> _startDownload(BuildContext context, MarketplaceAsset asset) async {
+    try {
+      final url = await r2vMarketplace.downloadAsset(asset.id);
+      if (url.isEmpty) {
+        throw Exception('Missing download url');
+      }
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to start download')),
+      );
+    }
   }
 }
 
@@ -607,7 +650,7 @@ class AssetCard extends StatelessWidget {
   final String likes;
   final String tag;
   final String styleTag;
-  final String poster;
+  final String? posterUrl;
   final String priceText;
   final double width;
   final VoidCallback? onTap;
@@ -619,7 +662,7 @@ class AssetCard extends StatelessWidget {
     required this.likes,
     required this.tag,
     required this.styleTag,
-    required this.poster,
+    required this.posterUrl,
     required this.priceText,
     required this.width,
     this.onTap,
@@ -647,16 +690,23 @@ class AssetCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               child: AspectRatio(
                 aspectRatio: 16 / 10,
-                child: Image.asset(
-                  poster,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.white.withOpacity(0.06),
-                    child: const Center(
-                      child: Icon(Icons.image_not_supported_rounded, color: Colors.white54),
-                    ),
-                  ),
-                ),
+                child: posterUrl == null || posterUrl!.isEmpty
+                    ? Container(
+                        color: Colors.white.withOpacity(0.06),
+                        child: const Center(
+                          child: Icon(Icons.image_not_supported_rounded, color: Colors.white54),
+                        ),
+                      )
+                    : Image.network(
+                        posterUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.white.withOpacity(0.06),
+                          child: const Center(
+                            child: Icon(Icons.image_not_supported_rounded, color: Colors.white54),
+                          ),
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 10),
@@ -716,11 +766,11 @@ class AssetCard extends StatelessWidget {
 // =====================================================================
 
 class AssetDetailsPanel extends StatefulWidget {
-  final Map<String, String> asset;
+  final MarketplaceAsset asset;
   final VoidCallback onClose;
 
-  final void Function(Map<String, String> asset) onPaidBuy;
-  final void Function(Map<String, String> asset) onFreeDownload;
+  final void Function(MarketplaceAsset asset) onPaidBuy;
+  final void Function(MarketplaceAsset asset) onFreeDownload;
 
   const AssetDetailsPanel({
     super.key,
@@ -740,9 +790,9 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   Future<void> _openExpanded(BuildContext context) async {
     setState(() => _expandedOpen = true);
 
-    final model = widget.asset["model"] ?? "";
-    final poster = widget.asset["poster"] ?? "";
-    final title = widget.asset["name"] ?? "Preview";
+    final model = widget.asset.previewUrl ?? "";
+    final poster = widget.asset.thumbUrl ?? "";
+    final title = widget.asset.title.isNotEmpty ? widget.asset.title : "Preview";
     final bool isWebWide = MediaQuery.of(context).size.width >= 900;
 
     if (isWebWide) {
@@ -774,29 +824,27 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   }
 
   bool _isFree() {
-    final raw = (widget.asset["price"] ?? "0").trim();
-    final p = double.tryParse(raw) ?? 0.0;
-    return p <= 0.0;
+    return !widget.asset.isPaid || widget.asset.price <= 0;
   }
 
   String _priceLabel() {
-    final raw = (widget.asset["price"] ?? "0").trim();
-    final p = double.tryParse(raw) ?? 0.0;
-    if (p <= 0.0) return "FREE";
-    final asInt = p == p.roundToDouble();
-    return asInt ? "EGP ${p.toInt()}" : "EGP ${p.toStringAsFixed(2)}";
+    final p = widget.asset.price;
+    if (p <= 0) return "FREE";
+    return "EGP $p";
   }
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.asset["name"] ?? "";
-    final author = widget.asset["author"] ?? "";
-    final likes = widget.asset["likes"] ?? "";
-    final tag = widget.asset["tag"] ?? "";
-    final style = widget.asset["style"] ?? "";
-    final model = widget.asset["model"] ?? "";
-    final poster = widget.asset["poster"] ?? "";
-    final description = widget.asset["description"] ?? "No description provided.";
+    final name = widget.asset.title;
+    final author = widget.asset.author;
+    final likes = widget.asset.likes;
+    final tag = widget.asset.category;
+    final style = widget.asset.style;
+    final model = widget.asset.previewUrl ?? "";
+    final poster = widget.asset.thumbUrl ?? "";
+    final description = widget.asset.description.isNotEmpty
+        ? widget.asset.description
+        : "No description provided.";
 
     final free = _isFree();
     final priceText = _priceLabel();
@@ -892,26 +940,37 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                               child: Container(
                                 color: Colors.black.withOpacity(0.18),
                                 child: _expandedOpen
-                                    ? Image.asset(
-                                        poster,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Center(
-                                          child: Icon(Icons.image, color: Colors.white.withOpacity(0.35)),
-                                        ),
-                                      )
-                                    : ModelViewer(
-                                        key: ValueKey(model),
-                                        src: model,
-                                        poster: poster,
-                                        backgroundColor: Colors.transparent,
-                                        cameraControls: true,
-                                        disableZoom: true,
-                                        autoRotate: true,
-                                        environmentImage: "neutral",
-                                        exposure: 1.0,
-                                        shadowIntensity: 0.8,
-                                        shadowSoftness: 1,
-                                      ),
+                                    ? (poster.isEmpty
+                                        ? Center(
+                                            child: Icon(Icons.image, color: Colors.white.withOpacity(0.35)),
+                                          )
+                                        : Image.network(
+                                            poster,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Center(
+                                              child: Icon(Icons.image, color: Colors.white.withOpacity(0.35)),
+                                            ),
+                                          ))
+                                    : (model.isEmpty
+                                        ? Center(
+                                            child: Text(
+                                              "Preview unavailable",
+                                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                                            ),
+                                          )
+                                        : ModelViewer(
+                                            key: ValueKey(model),
+                                            src: model,
+                                            poster: poster,
+                                            backgroundColor: Colors.transparent,
+                                            cameraControls: true,
+                                            disableZoom: true,
+                                            autoRotate: true,
+                                            environmentImage: "neutral",
+                                            exposure: 1.0,
+                                            shadowIntensity: 0.8,
+                                            shadowSoftness: 1,
+                                          )),
                               ),
                             ),
                             Positioned(
@@ -982,7 +1041,13 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {},
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: widget.asset.id));
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Asset ID copied')),
+                        );
+                      },
                       icon: const Icon(Icons.send, size: 18),
                       label: const Text("Send"),
                       style: OutlinedButton.styleFrom(
@@ -1111,19 +1176,26 @@ class _ExpandedViewerShell extends StatelessWidget {
                   child: Container(
                     margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                     color: Colors.black.withOpacity(0.18),
-                    child: ModelViewer(
-                      key: ValueKey("expanded-$model"),
-                      src: model,
-                      poster: poster,
-                      backgroundColor: Colors.transparent,
-                      cameraControls: true,
-                      disableZoom: false,
-                      autoRotate: true,
-                      environmentImage: "neutral",
-                      exposure: 1.0,
-                      shadowIntensity: 0.8,
-                      shadowSoftness: 1,
-                    ),
+                    child: model.isEmpty
+                        ? Center(
+                            child: Text(
+                              "Preview unavailable",
+                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                            ),
+                          )
+                        : ModelViewer(
+                            key: ValueKey("expanded-$model"),
+                            src: model,
+                            poster: poster,
+                            backgroundColor: Colors.transparent,
+                            cameraControls: true,
+                            disableZoom: false,
+                            autoRotate: true,
+                            environmentImage: "neutral",
+                            exposure: 1.0,
+                            shadowIntensity: 0.8,
+                            shadowSoftness: 1,
+                          ),
                   ),
                 ),
               ),
@@ -1385,4 +1457,3 @@ class _NebulaPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _NebulaPainter oldDelegate) => true;
 }
-

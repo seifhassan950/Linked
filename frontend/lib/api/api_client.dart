@@ -8,6 +8,9 @@ import 'api_exception.dart';
 import 'token_store.dart';
 
 class ApiClient {
+  static const bool _verbose =
+      bool.fromEnvironment('R2V_API_VERBOSE', defaultValue: false);
+
   ApiClient({
     http.Client? httpClient,
     TokenStore? tokenStore,
@@ -40,6 +43,12 @@ class ApiClient {
     final p = path.startsWith('/') ? path : '/$path';
     final u = Uri.parse('$_base$p');
     return query == null ? u : u.replace(queryParameters: query);
+  }
+
+  void _log(String message) {
+    if (!_verbose) return;
+    // ignore: avoid_print
+    print('[R2V API] $message');
   }
 
   Future<http.Response> _sendWithRefresh(
@@ -98,6 +107,21 @@ class ApiClient {
     }
   }
 
+  List<dynamic> _decodeJsonList(http.Response res) {
+    try {
+      final body = res.body.trim();
+      if (body.isEmpty) return <dynamic>[];
+      final decoded = jsonDecode(body);
+      if (decoded is List) return decoded;
+      if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+        return decoded['data'] as List;
+      }
+      return <dynamic>[];
+    } catch (_) {
+      return <dynamic>[];
+    }
+  }
+
   String _errorMessage(http.Response res) {
     final j = _decodeJson(res);
     final msg = j['detail'] ?? j['message'] ?? j['error'];
@@ -107,43 +131,84 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getJson(String path, {bool auth = false, Map<String, String>? query}) async {
     final uri = _uri(path, query);
+    _log('GET $uri');
     final res = await _sendWithRefresh(
       () async => _http.get(uri, headers: await _headers(auth: auth)),
       auth: auth,
     );
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('GET $uri -> ${res.statusCode}');
       throw ApiException(_errorMessage(res), statusCode: res.statusCode);
     }
+    _log('GET $uri -> ${res.statusCode}');
     return _decodeJson(res);
+  }
+
+  Future<List<dynamic>> getJsonList(String path,
+      {bool auth = false, Map<String, String>? query}) async {
+    final uri = _uri(path, query);
+    _log('GET $uri');
+    final res = await _sendWithRefresh(
+      () async => _http.get(uri, headers: await _headers(auth: auth)),
+      auth: auth,
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('GET $uri -> ${res.statusCode}');
+      throw ApiException(_errorMessage(res), statusCode: res.statusCode);
+    }
+    _log('GET $uri -> ${res.statusCode}');
+    return _decodeJsonList(res);
   }
 
   Future<Map<String, dynamic>> postJson(String path, {bool auth = false, Map<String, dynamic>? body}) async {
     final uri = _uri(path);
+    _log('POST $uri');
     final res = await _sendWithRefresh(
       () async => _http.post(uri, headers: await _headers(auth: auth), body: jsonEncode(body ?? {})),
       auth: auth,
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('POST $uri -> ${res.statusCode}');
       throw ApiException(_errorMessage(res), statusCode: res.statusCode);
     }
+    _log('POST $uri -> ${res.statusCode}');
     return _decodeJson(res);
   }
 
   Future<Map<String, dynamic>> putJson(String path, {bool auth = false, Map<String, dynamic>? body}) async {
     final uri = _uri(path);
+    _log('PUT $uri');
     final res = await _sendWithRefresh(
       () async => _http.put(uri, headers: await _headers(auth: auth), body: jsonEncode(body ?? {})),
       auth: auth,
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('PUT $uri -> ${res.statusCode}');
       throw ApiException(_errorMessage(res), statusCode: res.statusCode);
     }
+    _log('PUT $uri -> ${res.statusCode}');
+    return _decodeJson(res);
+  }
+
+  Future<Map<String, dynamic>> patchJson(String path, {bool auth = false, Map<String, dynamic>? body}) async {
+    final uri = _uri(path);
+    _log('PATCH $uri');
+    final res = await _sendWithRefresh(
+      () async => _http.patch(uri, headers: await _headers(auth: auth), body: jsonEncode(body ?? {})),
+      auth: auth,
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('PATCH $uri -> ${res.statusCode}');
+      throw ApiException(_errorMessage(res), statusCode: res.statusCode);
+    }
+    _log('PATCH $uri -> ${res.statusCode}');
     return _decodeJson(res);
   }
 
   Future<Map<String, dynamic>> deleteJson(String path, {bool auth = false, Map<String, dynamic>? body}) async {
     final uri = _uri(path);
+    _log('DELETE $uri');
     final req = http.Request('DELETE', uri);
     req.headers.addAll(await _headers(auth: auth));
     if (body != null) req.body = jsonEncode(body);
@@ -154,8 +219,10 @@ class ApiClient {
     );
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      _log('DELETE $uri -> ${res.statusCode}');
       throw ApiException(_errorMessage(res), statusCode: res.statusCode);
     }
+    _log('DELETE $uri -> ${res.statusCode}');
     return _decodeJson(res);
   }
 
