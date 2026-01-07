@@ -37,13 +37,18 @@ def presign_upload(job_id: str, payload: PresignIn, db: Session = Depends(get_db
     if not j: not_found()
     if j.user_id != user.id: forbidden()
     key = f"{user.id}/{job_id}/inputs/{uuid.uuid4()}_{payload.filename}"
-    url = s3.presign_put(settings.s3_bucket_scans_raw, key, expires=3600)
+    url = s3.presign_put(
+        settings.s3_bucket_scans_raw,
+        key,
+        expires=3600,
+        content_type=payload.content_type,
+    )
     # store key in job
     keys = list(j.input_keys or [])
     keys.append(key)
     j.input_keys = keys
     db.commit()
-    return PresignedURL(url=url)
+    return PresignedURL(url=url, headers={"Content-Type": payload.content_type})
 
 @router.post("/jobs/{job_id}/start", response_model=JobOut)
 def start_reconstruction(job_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
