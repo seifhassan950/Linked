@@ -14,8 +14,17 @@ class S3Client:
             config=Config(signature_version="s3v4"),
         )
 
-    def presign_put(self, bucket: str, key: str, expires: int = 3600) -> str:
-        return self.client.generate_presigned_url("put_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires)
+    def presign_put(
+        self,
+        bucket: str,
+        key: str,
+        expires: int = 3600,
+        content_type: str | None = None,
+    ) -> str:
+        params = {"Bucket": bucket, "Key": key}
+        if content_type:
+            params["ContentType"] = content_type
+        return self.client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
 
     def presign_get(self, bucket: str, key: str, expires: int = 3600) -> str:
         return self.client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires)

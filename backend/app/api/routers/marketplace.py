@@ -67,7 +67,12 @@ def presign_asset(payload: AssetPresignIn, user = Depends(get_current_user)):
         bad_request("kind must be model|thumb")
     bucket = settings.s3_bucket_marketplace_models if kind == "model" else settings.s3_bucket_marketplace_thumbs
     key = f"{user.id}/marketplace/{kind}/{uuid.uuid4()}_{payload.filename}"
-    url = s3.presign_put(bucket, key, expires=3600)
+    url = s3.presign_put(
+        bucket,
+        key,
+        expires=3600,
+        content_type=payload.content_type,
+    )
     return AssetPresignOut(url=url, key=key)
 
 @router.post("/assets", response_model=AssetOut)
