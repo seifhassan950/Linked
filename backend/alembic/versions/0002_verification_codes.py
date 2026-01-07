@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.create_table(
         "verification_codes",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("purpose", sa.String(length=32), nullable=False),
         sa.Column("code_hash", sa.String(length=64), nullable=False),
