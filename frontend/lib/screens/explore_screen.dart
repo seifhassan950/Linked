@@ -1,8 +1,11 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/rendering.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
@@ -488,15 +491,32 @@ class _ExploreScreenState extends State<ExploreScreen> {
             borderRadius: BorderRadius.circular(26),
             border: Border.all(color: Colors.white.withOpacity(0.12)),
           ),
-          child: const Column(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "Marketplace",
-                style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Marketplace",
+                      style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () => _openUploadDialog(context),
+                    icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                    label: const Text("Upload"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8A4FFF),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 "Browse trending 3D assets and CGI-ready packs. Mix, match, and export fast.",
                 style: TextStyle(color: Colors.white70, height: 1.35, fontSize: 14.5),
               ),
@@ -637,6 +657,507 @@ class _ExploreScreenState extends State<ExploreScreen> {
         const SnackBar(content: Text('Unable to start download')),
       );
     }
+  }
+
+  Future<void> _openUploadDialog(BuildContext context) async {
+    await showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (_) => const _MarketplaceUploadDialog(),
+    );
+  }
+}
+
+class _MarketplaceUploadDialog extends StatefulWidget {
+  const _MarketplaceUploadDialog();
+
+  @override
+  State<_MarketplaceUploadDialog> createState() => _MarketplaceUploadDialogState();
+}
+
+class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
+  final GlobalKey _viewerKey = GlobalKey();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+
+  Uint8List? _modelBytes;
+  String? _modelName;
+  String? _modelDataUrl;
+  Uint8List? _thumbnailBytes;
+  String? _thumbnailName;
+  bool _thumbnailCaptured = false;
+
+  String _category = "Objects";
+  String _style = "Realistic";
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _priceController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickModel() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['glb', 'gltf', 'obj'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+    final ext = (file.extension ?? '').toLowerCase();
+    final mime = _modelMimeType(ext);
+    setState(() {
+      _modelBytes = file.bytes;
+      _modelName = file.name;
+      _modelDataUrl = Uri.dataFromBytes(file.bytes!, mimeType: mime).toString();
+      _thumbnailCaptured = false;
+    });
+  }
+
+  Future<void> _pickThumbnail() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+    setState(() {
+      _thumbnailBytes = file.bytes;
+      _thumbnailName = file.name;
+      _thumbnailCaptured = false;
+    });
+  }
+
+  Future<void> _captureThumbnail() async {
+    if (_modelDataUrl == null) {
+      _showSnack('Upload a 3D model first.');
+      return;
+    }
+    final boundary = _viewerKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) {
+      _showSnack('Preview not ready for capture.');
+      return;
+    }
+    try {
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final data = await image.toByteData(format: ImageByteFormat.png);
+      if (data == null) {
+        _showSnack('Unable to capture thumbnail.');
+        return;
+      }
+      setState(() {
+        _thumbnailBytes = data.buffer.asUint8List();
+        _thumbnailName = 'viewer-thumbnail.png';
+        _thumbnailCaptured = true;
+      });
+      _showSnack('Thumbnail captured from viewer.');
+    } catch (_) {
+      _showSnack('Thumbnail capture isn’t supported on this platform.');
+    }
+  }
+
+  String _modelMimeType(String ext) {
+    switch (ext) {
+      case 'gltf':
+        return 'model/gltf+json';
+      case 'obj':
+        return 'model/obj';
+      case 'glb':
+      default:
+        return 'model/gltf-binary';
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _submitUpload() {
+    if (_titleController.text.trim().isEmpty) {
+      _showSnack('Add a title for your asset.');
+      return;
+    }
+    if (_modelDataUrl == null) {
+      _showSnack('Upload a 3D model to continue.');
+      return;
+    }
+    if (_thumbnailBytes == null) {
+      _showSnack('Choose a thumbnail or capture one from the viewer.');
+      return;
+    }
+    Navigator.of(context).pop();
+    _showSnack('Asset ready to post in marketplace.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            width: 640,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withOpacity(0.14)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        "Upload to Marketplace",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.10),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
+                        ),
+                        child: const Icon(Icons.close, size: 18, color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _titleController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _inputDecoration("Asset title"),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _priceController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: _inputDecoration("Price (EGP)"),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _dropdownField(
+                                label: "Category",
+                                value: _category,
+                                options: const [
+                                  "Characters",
+                                  "Objects",
+                                  "Vehicles",
+                                  "Environments",
+                                  "Stylized",
+                                  "Realistic",
+                                ],
+                                onChanged: (value) => setState(() => _category = value ?? _category),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _dropdownField(
+                          label: "Style",
+                          value: _style,
+                          options: const ["Realistic", "Stylized", "CGI", "Low Poly"],
+                          onChanged: (value) => setState(() => _style = value ?? _style),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _descriptionController,
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 3,
+                          decoration: _inputDecoration("Description"),
+                        ),
+                        const SizedBox(height: 14),
+                        _sectionTitle("Model Upload"),
+                        const SizedBox(height: 8),
+                        _uploadRow(
+                          label: _modelName ?? "Upload a 3D model (.glb, .gltf, .obj)",
+                          onPressed: _pickModel,
+                        ),
+                        const SizedBox(height: 14),
+                        _sectionTitle("Thumbnail"),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Rotate the 3D model and capture the view you want for your marketplace thumbnail.",
+                          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12.5),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _uploadRow(
+                                label: _thumbnailName ?? "Upload an image thumbnail",
+                                onPressed: _pickThumbnail,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            ElevatedButton(
+                              onPressed: _captureThumbnail,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF4CC9F0),
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              child: const Text("Capture View"),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _previewCard(),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withOpacity(0.18)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text("Cancel"),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _submitUpload,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8A4FFF),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text("Post Asset"),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _previewCard() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+              child: Row(
+                children: [
+                  const Text(
+                    "Preview",
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                  if (_thumbnailCaptured)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          "Thumbnail set",
+                          style: TextStyle(color: Color(0xFF22C55E), fontSize: 10.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AspectRatio(
+                      aspectRatio: 16 / 10,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          color: Colors.black.withOpacity(0.18),
+                          child: RepaintBoundary(
+                            key: _viewerKey,
+                            child: _modelDataUrl == null
+                                ? Center(
+                                    child: Text(
+                                      "Model preview",
+                                      style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                                    ),
+                                  )
+                                : ModelViewer(
+                                    key: ValueKey(_modelDataUrl),
+                                    src: _modelDataUrl!,
+                                    backgroundColor: Colors.transparent,
+                                    cameraControls: true,
+                                    disableZoom: false,
+                                    autoRotate: false,
+                                    environmentImage: "neutral",
+                                    exposure: 1.0,
+                                    shadowIntensity: 0.8,
+                                    shadowSoftness: 1,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 120,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Thumbnail",
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            height: 80,
+                            width: 120,
+                            color: Colors.black.withOpacity(0.2),
+                            child: _thumbnailBytes == null
+                                ? Center(
+                                    child: Text(
+                                      "No image",
+                                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                                    ),
+                                  )
+                                : Image.memory(
+                                    _thumbnailBytes!,
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.06),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.12)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: Color(0xFF8A4FFF)),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+    );
+  }
+
+  Widget _uploadRow({required String label, required VoidCallback onPressed}) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.upload_file_rounded, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withOpacity(0.18)),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
+  }
+
+  Widget _dropdownField({
+    required String label,
+    required String value,
+    required List<String> options,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return InputDecorator(
+      decoration: _inputDecoration(label),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          dropdownColor: const Color(0xFF1B1F2E),
+          iconEnabledColor: Colors.white70,
+          style: const TextStyle(color: Colors.white),
+          items: options
+              .map((option) => DropdownMenuItem<String>(
+                    value: option,
+                    child: Text(option),
+                  ))
+              .toList(),
+          onChanged: onChanged,
+        ),
+      ),
+    );
   }
 }
 
