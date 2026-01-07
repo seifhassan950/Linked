@@ -828,7 +828,6 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       await r2vMarketplace.uploadToPresignedUrl(
         modelPresign['url']!,
         _modelBytes!,
-        modelMime,
       );
 
       final thumbName = _thumbnailName ?? 'thumbnail.png';
@@ -844,7 +843,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
       await r2vMarketplace.uploadToPresignedUrl(
         thumbPresign['url']!,
         _thumbnailBytes!,
-        thumbMime,
+        contentType: thumbMime,
       );
 
       final asset = await r2vMarketplace.createAsset(

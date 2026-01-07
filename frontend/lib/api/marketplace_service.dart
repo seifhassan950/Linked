@@ -126,14 +126,18 @@ class MarketplaceService {
     };
   }
 
-  Future<void> uploadToPresignedUrl(String url, Uint8List bytes, String contentType) async {
+  Future<void> uploadToPresignedUrl(String url, Uint8List bytes, {String? contentType}) async {
     final res = await http.put(
       Uri.parse(url),
-      headers: {'Content-Type': contentType},
+      headers: contentType == null || contentType.isEmpty
+          ? const {}
+          : {'Content-Type': contentType},
       body: bytes,
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Upload failed (${res.statusCode})');
+      final detail = res.body.trim();
+      final suffix = detail.isEmpty ? '' : ': $detail';
+      throw Exception('Upload failed (${res.statusCode})$suffix');
     }
   }
 
