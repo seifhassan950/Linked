@@ -424,13 +424,17 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                                       _SmallGlassButton(
                                                         icon: Icons.photo_library_rounded,
                                                         label: "Upload",
-                                                        onTap: _pickFromGalleryMobile,
+                                                        onTap: () {
+                                                          _pickFromGalleryMobile();
+                                                        },
                                                       ),
                                                       const Spacer(),
 
                                                       // Capture
                                                       GestureDetector(
-                                                        onTap: _capture,
+                                                        onTap: () {
+                                                          _capture();
+                                                        },
                                                         child: _CaptureButton(active: !_capturing),
                                                       ),
 
@@ -440,7 +444,11 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                                       _SmallGlassButton(
                                                         icon: Icons.check_rounded,
                                                         label: "Finish",
-                                                        onTap: _uploading ? null : _finish,
+                                                        onTap: _uploading
+                                                            ? null
+                                                            : () {
+                                                                _finish();
+                                                              },
                                                         accent: green,
                                                       ),
                                                     ],
@@ -629,13 +637,13 @@ class _TipsRow extends StatelessWidget {
 class _SmallGlassButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color? accent;
 
   const _SmallGlassButton({
     required this.icon,
     required this.label,
-    required this.onTap,
+    this.onTap,
     this.accent,
   });
 
