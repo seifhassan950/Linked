@@ -1,0 +1,64 @@
+from __future__ import annotations
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import select, desc, func
+from app.api.deps import get_db, get_current_user
+from app.api.schemas.social import PostCreateIn, PostOut, ProfileOut
+from app.core.errors import not_found, conflict
+from app.db.models.social import Post, Like, Save, Follow
+from app.db.models.user import UserProfile
+
+router = APIRouter()
+
+def to_post_out(p: Post) -> PostOut:
+    return PostOut(
+        id=str(p.id), creator_id=str(p.creator_id), asset_id=str(p.asset_id) if p.asset_id else None,
+        caption=p.caption, media_keys=p.media_keys or [], created_at=p.created_at.isoformat()
+    )
+
+@router.post("/posts", response_model=PostOut)
+def create_post(payload: PostCreateIn, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    p = Post(creator_id=user.id, asset_id=payload.asset_id, caption=payload.caption, media_keys=payload.media_keys)
+    db.add(p); db.commit(); db.refresh(p)
+    return to_post_out(p)
+
+@router.get("/posts", response_model=list[PostOut])
+def feed(limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
+    q = select(Post).order_by(desc(Post.created_at)).limit(limit).offset(offset)
+    return [to_post_out(p) for p in db.execute(q).scalars().all()]
+
+@router.post("/posts/{post_id}/like")
+def like(post_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    existing = db.execute(select(Like).where(Like.user_id==user.id, Like.post_id==post_id)).scalar_one_or_none()
+    if existing:
+        conflict("Already liked")
+    db.add(Like(user_id=user.id, post_id=post_id))
+    db.commit()
+    return {"detail": "ok"}
+
+@router.post("/posts/{post_id}/save")
+def save(post_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    existing = db.execute(select(Save).where(Save.user_id==user.id, Save.post_id==post_id)).scalar_one_or_none()
+    if existing:
+        conflict("Already saved")
+    db.add(Save(user_id=user.id, post_id=post_id))
+    db.commit()
+    return {"detail": "ok"}
+
+@router.post("/follow/{user_id}")
+def follow(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    existing = db.execute(select(Follow).where(Follow.follower_id==user.id, Follow.following_id==user_id)).scalar_one_or_none()
+    if existing:
+        conflict("Already following")
+    db.add(Follow(follower_id=user.id, following_id=user_id))
+    db.commit()
+    return {"detail": "ok"}
+
+@router.get("/profile/{user_id}", response_model=ProfileOut)
+def profile(user_id: str, db: Session = Depends(get_db)):
+    prof = db.get(UserProfile, user_id)
+    if not prof: not_found("Profile not found")
+    posts = db.execute(select(func.count()).select_from(Post).where(Post.creator_id==user_id)).scalar_one()
+    followers = db.execute(select(func.count()).select_from(Follow).where(Follow.following_id==user_id)).scalar_one()
+    following = db.execute(select(func.count()).select_from(Follow).where(Follow.follower_id==user_id)).scalar_one()
+    return ProfileOut(user_id=str(user_id), username=prof.username, bio=prof.bio, avatar_url=prof.avatar_url, posts=posts, followers=followers, following=following)
