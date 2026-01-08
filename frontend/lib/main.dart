@@ -131,7 +131,17 @@ initialRoute: '/signin',
             page = const ExploreScreen();
             break;
           case '/profile':
-            page = const ProfileScreen();
+            final args = settings.arguments;
+            String? userId;
+            String? username;
+            if (args is Map) {
+              userId = args['userId']?.toString();
+              username = args['username']?.toString();
+            }
+            page = ProfileScreen(
+              userId: userId,
+              username: username ?? 'User',
+            );
             break;
           case '/editprofile':
             page = const ProfileScreen();

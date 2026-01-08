@@ -1,11 +1,12 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, or_
 from app.api.deps import get_db, get_current_user
 from app.api.schemas.social import PostCreateIn, PostOut, ProfileOut
 from app.core.errors import not_found, conflict
 from app.db.models.social import Post, Like, Save, Follow
+from app.db.models.marketplace import Asset
 from app.db.models.user import UserProfile
 
 router = APIRouter()
@@ -54,11 +55,38 @@ def follow(user_id: str, db: Session = Depends(get_db), user = Depends(get_curre
     db.commit()
     return {"detail": "ok"}
 
+@router.delete("/follow/{user_id}")
+def unfollow(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    existing = db.execute(select(Follow).where(Follow.follower_id==user.id, Follow.following_id==user_id)).scalar_one_or_none()
+    if not existing:
+        not_found("Follow not found")
+    db.delete(existing)
+    db.commit()
+    return {"detail": "ok"}
+
 @router.get("/profile/{user_id}", response_model=ProfileOut)
-def profile(user_id: str, db: Session = Depends(get_db)):
+def profile(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
     prof = db.get(UserProfile, user_id)
     if not prof: not_found("Profile not found")
-    posts = db.execute(select(func.count()).select_from(Post).where(Post.creator_id==user_id)).scalar_one()
+    posts_stmt = select(func.count()).select_from(Asset).where(Asset.creator_id==user_id)
+    if user.id != user_id:
+        posts_stmt = posts_stmt.where(Asset.visibility == "published")
+    posts = db.execute(posts_stmt).scalar_one()
     followers = db.execute(select(func.count()).select_from(Follow).where(Follow.following_id==user_id)).scalar_one()
     following = db.execute(select(func.count()).select_from(Follow).where(Follow.follower_id==user_id)).scalar_one()
-    return ProfileOut(user_id=str(user_id), username=prof.username, bio=prof.bio, avatar_url=prof.avatar_url, posts=posts, followers=followers, following=following)
+    is_following = False
+    if user.id != user_id:
+        is_following = db.execute(
+            select(Follow).where(Follow.follower_id==user.id, Follow.following_id==user_id)
+        ).scalar_one_or_none() is not None
+    return ProfileOut(
+        user_id=str(user_id),
+        username=prof.username,
+        bio=prof.bio,
+        avatar_url=prof.avatar_url,
+        posts=posts,
+        followers=followers,
+        following=following,
+        is_following=is_following,
+        is_self=user.id == user_id,
+    )

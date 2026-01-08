@@ -110,6 +110,19 @@ def list_liked_assets(db: Session = Depends(get_db), user = Depends(get_current_
         profiles = {p.user_id: p.username for p in rows}
     return [to_out(a, profiles.get(a.creator_id)) for a in items]
 
+@router.get("/assets/user/{user_id}", response_model=list[AssetOut])
+def list_user_assets(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    stmt = (
+        select(Asset)
+        .where(Asset.creator_id == user_id)
+        .where(or_(Asset.visibility == "published", Asset.creator_id == user.id))
+        .order_by(desc(Asset.created_at))
+    )
+    items = db.execute(stmt).scalars().all()
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == user_id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return [to_out(a, creator_name) for a in items]
+
 @router.post("/assets/presign", response_model=AssetPresignOut)
 def presign_asset(payload: AssetPresignIn, user = Depends(get_current_user)):
     kind = payload.kind.lower()
