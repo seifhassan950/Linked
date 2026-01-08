@@ -712,6 +712,12 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   String _category = "Objects";
   String _style = "Realistic";
 
+  bool get _canCaptureThumbnail {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   @override
   void dispose() {
     _titleController.dispose();
@@ -755,6 +761,10 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   }
 
   Future<void> _captureThumbnail() async {
+    if (!_canCaptureThumbnail) {
+      _showSnack('Capture isn\'t supported on this platform. Please upload a thumbnail image.');
+      return;
+    }
     if (_modelDataUrl == null) {
       _showSnack('Upload a 3D model first.');
       return;
@@ -1016,7 +1026,9 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
                         _sectionTitle("Thumbnail"),
                         const SizedBox(height: 8),
                         Text(
-                          "Rotate the 3D model and capture the view you want for your marketplace thumbnail.",
+                          _canCaptureThumbnail
+                              ? "Rotate the 3D model and capture the view you want for your marketplace thumbnail."
+                              : "Capture isn't available on this platform. Upload an image thumbnail instead.",
                           style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12.5),
                         ),
                         const SizedBox(height: 10),
@@ -1030,7 +1042,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
                             ),
                             const SizedBox(width: 10),
                             ElevatedButton(
-                              onPressed: _captureThumbnail,
+                              onPressed: _canCaptureThumbnail ? _captureThumbnail : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF4CC9F0),
                                 foregroundColor: Colors.black,
