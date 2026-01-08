@@ -1389,6 +1389,8 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   bool _liked = false;
   bool _saved = false;
   late int _likesCount;
+  bool _liking = false;
+  bool _saving = false;
 
   Future<void> _openExpanded(BuildContext context) async {
     setState(() => _expandedOpen = true);
@@ -1442,21 +1444,79 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
     _likesCount = int.tryParse(widget.asset.likes) ?? 0;
   }
 
-  void _toggleLike() {
+  Future<void> _toggleLike() async {
+    if (_liking) return;
+    final nextLiked = !_liked;
     setState(() {
-      _liked = !_liked;
-      _likesCount += _liked ? 1 : -1;
+      _liked = nextLiked;
+      _likesCount += nextLiked ? 1 : -1;
+      _liking = true;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_liked ? 'Added to likes' : 'Removed from likes')),
-    );
+    try {
+      if (nextLiked) {
+        await r2vMarketplace.likeAsset(widget.asset.id);
+      } else {
+        await r2vMarketplace.unlikeAsset(widget.asset.id);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(nextLiked ? 'Added to likes' : 'Removed from likes')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _liked = !nextLiked;
+        _likesCount += nextLiked ? -1 : 1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _liked = !nextLiked;
+        _likesCount += nextLiked ? -1 : 1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update like')),
+      );
+    } finally {
+      if (mounted) setState(() => _liking = false);
+    }
   }
 
-  void _toggleSave() {
-    setState(() => _saved = !_saved);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_saved ? 'Saved to your profile' : 'Removed from saved')),
-    );
+  Future<void> _toggleSave() async {
+    if (_saving) return;
+    final nextSaved = !_saved;
+    setState(() {
+      _saved = nextSaved;
+      _saving = true;
+    });
+    try {
+      if (nextSaved) {
+        await r2vMarketplace.saveAsset(widget.asset.id);
+      } else {
+        await r2vMarketplace.unsaveAsset(widget.asset.id);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(nextSaved ? 'Saved to your profile' : 'Removed from saved')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _saved = !nextSaved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saved = !nextSaved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update saved')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override

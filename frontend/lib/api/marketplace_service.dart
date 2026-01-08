@@ -103,6 +103,22 @@ class MarketplaceService {
         .toList();
   }
 
+  Future<List<MarketplaceAsset>> listSavedAssets() async {
+    final list = await _api.getJsonList('/marketplace/assets/saved', auth: true);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(MarketplaceAsset.fromJson)
+        .toList();
+  }
+
+  Future<List<MarketplaceAsset>> listLikedAssets() async {
+    final list = await _api.getJsonList('/marketplace/assets/liked', auth: true);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(MarketplaceAsset.fromJson)
+        .toList();
+  }
+
   Future<String> checkoutAsset(String assetId) async {
     final data = await _api.postJson('/billing/checkout/asset',
         auth: true, body: {'asset_id': assetId});
@@ -187,5 +203,25 @@ class MarketplaceService {
   Future<MarketplaceAsset> publishAsset(String assetId) async {
     final data = await _api.postJson('/marketplace/assets/$assetId/publish', auth: true);
     return MarketplaceAsset.fromJson(data);
+  }
+
+  Future<void> likeAsset(String assetId) async {
+    await _api.postJson('/marketplace/assets/$assetId/like', auth: true);
+  }
+
+  Future<void> unlikeAsset(String assetId) async {
+    await _api.deleteJson('/marketplace/assets/$assetId/like', auth: true);
+  }
+
+  Future<void> saveAsset(String assetId) async {
+    await _api.postJson('/marketplace/assets/$assetId/save', auth: true);
+  }
+
+  Future<void> unsaveAsset(String assetId) async {
+    await _api.deleteJson('/marketplace/assets/$assetId/save', auth: true);
+  }
+
+  Future<void> deleteAsset(String assetId) async {
+    await _api.deleteJson('/marketplace/assets/$assetId', auth: true);
   }
 }

@@ -1,11 +1,12 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc, or_
+from sqlalchemy import select, desc, or_, func
 from app.api.deps import get_db, get_current_user
 from app.api.schemas.marketplace import AssetOut, AssetCreateIn, AssetUpdateIn, EntitlementOut, AssetPresignIn, AssetPresignOut
-from app.core.errors import not_found, forbidden, bad_request
+from app.core.errors import not_found, forbidden, bad_request, conflict
 from app.db.models.marketplace import Asset, RecentlyViewed
+from app.db.models.social import Like, Save
 from app.db.models.user import UserProfile
 from app.services.entitlements import is_entitled_to_asset
 from app.services.s3 import s3
@@ -25,6 +26,12 @@ def _preview_url(a: Asset) -> str | None:
         return None
     key = a.preview_object_keys[0]
     return s3.presign_get(settings.s3_bucket_marketplace_models, key, expires=900)
+
+def _set_like_count(a: Asset, db: Session) -> None:
+    count = db.execute(select(func.count()).select_from(Like).where(Like.asset_id == a.id)).scalar_one()
+    meta = dict(a.meta_json or {})
+    meta["likes"] = count
+    a.meta_json = meta
 
 def to_out(a: Asset, creator_username: str | None = None) -> AssetOut:
     meta = dict(a.meta_json or {})
@@ -68,6 +75,40 @@ def list_my_assets(db: Session = Depends(get_db), user = Depends(get_current_use
     prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
     creator_name = prof.username if prof else None
     return [to_out(a, creator_name) for a in items]
+
+@router.get("/assets/saved", response_model=list[AssetOut])
+def list_saved_assets(db: Session = Depends(get_db), user = Depends(get_current_user)):
+    stmt = (
+        select(Asset)
+        .join(Save, Save.asset_id == Asset.id)
+        .where(Save.user_id == user.id)
+        .where(or_(Asset.visibility == "published", Asset.creator_id == user.id))
+        .order_by(desc(Save.created_at))
+    )
+    items = db.execute(stmt).scalars().all()
+    creator_ids = {a.creator_id for a in items}
+    profiles = {}
+    if creator_ids:
+        rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(creator_ids))).scalars().all()
+        profiles = {p.user_id: p.username for p in rows}
+    return [to_out(a, profiles.get(a.creator_id)) for a in items]
+
+@router.get("/assets/liked", response_model=list[AssetOut])
+def list_liked_assets(db: Session = Depends(get_db), user = Depends(get_current_user)):
+    stmt = (
+        select(Asset)
+        .join(Like, Like.asset_id == Asset.id)
+        .where(Like.user_id == user.id)
+        .where(or_(Asset.visibility == "published", Asset.creator_id == user.id))
+        .order_by(desc(Like.created_at))
+    )
+    items = db.execute(stmt).scalars().all()
+    creator_ids = {a.creator_id for a in items}
+    profiles = {}
+    if creator_ids:
+        rows = db.execute(select(UserProfile).where(UserProfile.user_id.in_(creator_ids))).scalars().all()
+        profiles = {p.user_id: p.username for p in rows}
+    return [to_out(a, profiles.get(a.creator_id)) for a in items]
 
 @router.post("/assets/presign", response_model=AssetPresignOut)
 def presign_asset(payload: AssetPresignIn, user = Depends(get_current_user)):
@@ -156,6 +197,63 @@ def publish(asset_id: str, db: Session = Depends(get_db), user = Depends(get_cur
     prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
     creator_name = prof.username if prof else None
     return to_out(a, creator_name)
+
+@router.post("/assets/{asset_id}/like")
+def like_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    a = db.get(Asset, asset_id)
+    if not a: not_found()
+    existing = db.execute(select(Like).where(Like.user_id == user.id, Like.asset_id == a.id)).scalar_one_or_none()
+    if existing:
+        conflict("Already liked")
+    db.add(Like(user_id=user.id, asset_id=a.id))
+    db.flush()
+    _set_like_count(a, db)
+    db.commit()
+    return {"detail": "ok"}
+
+@router.delete("/assets/{asset_id}/like")
+def unlike_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    a = db.get(Asset, asset_id)
+    if not a: not_found()
+    like = db.execute(select(Like).where(Like.user_id == user.id, Like.asset_id == a.id)).scalar_one_or_none()
+    if not like:
+        not_found("Like not found")
+    db.delete(like)
+    db.flush()
+    _set_like_count(a, db)
+    db.commit()
+    return {"detail": "ok"}
+
+@router.post("/assets/{asset_id}/save")
+def save_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    a = db.get(Asset, asset_id)
+    if not a: not_found()
+    existing = db.execute(select(Save).where(Save.user_id == user.id, Save.asset_id == a.id)).scalar_one_or_none()
+    if existing:
+        conflict("Already saved")
+    db.add(Save(user_id=user.id, asset_id=a.id))
+    db.commit()
+    return {"detail": "ok"}
+
+@router.delete("/assets/{asset_id}/save")
+def unsave_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    a = db.get(Asset, asset_id)
+    if not a: not_found()
+    saved = db.execute(select(Save).where(Save.user_id == user.id, Save.asset_id == a.id)).scalar_one_or_none()
+    if not saved:
+        not_found("Save not found")
+    db.delete(saved)
+    db.commit()
+    return {"detail": "ok"}
+
+@router.delete("/assets/{asset_id}")
+def delete_asset(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    a = db.get(Asset, asset_id)
+    if not a: not_found()
+    if a.creator_id != user.id: forbidden()
+    db.delete(a)
+    db.commit()
+    return {"detail": "ok"}
 
 @router.get("/assets/{asset_id}/entitlement", response_model=EntitlementOut)
 def entitlement(asset_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
