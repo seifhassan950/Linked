@@ -95,6 +95,14 @@ class MarketplaceService {
         .toList();
   }
 
+  Future<List<MarketplaceAsset>> listMyAssets() async {
+    final list = await _api.getJsonList('/marketplace/assets/me', auth: true);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(MarketplaceAsset.fromJson)
+        .toList();
+  }
+
   Future<String> checkoutAsset(String assetId) async {
     final data = await _api.postJson('/billing/checkout/asset',
         auth: true, body: {'asset_id': assetId});

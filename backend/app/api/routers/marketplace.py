@@ -60,6 +60,15 @@ def list_assets(q: str | None = None, category: str | None = None, style: str | 
         profiles = {p.user_id: p.username for p in rows}
     return [to_out(a, profiles.get(a.creator_id)) for a in items]
 
+@router.get("/assets/me", response_model=list[AssetOut])
+def list_my_assets(db: Session = Depends(get_db), user = Depends(get_current_user)):
+    items = db.execute(
+        select(Asset).where(Asset.creator_id == user.id).order_by(desc(Asset.created_at))
+    ).scalars().all()
+    prof = db.execute(select(UserProfile).where(UserProfile.user_id == user.id)).scalar_one_or_none()
+    creator_name = prof.username if prof else None
+    return [to_out(a, creator_name) for a in items]
+
 @router.post("/assets/presign", response_model=AssetPresignOut)
 def presign_asset(payload: AssetPresignIn, user = Depends(get_current_user)):
     kind = payload.kind.lower()
