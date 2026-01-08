@@ -133,8 +133,12 @@ class MarketplaceService {
     return data['checkout_url']?.toString() ?? '';
   }
 
-  Future<String> downloadAsset(String assetId) async {
-    final data = await _api.getJson('/assets/$assetId/download', auth: true);
+  Future<String> downloadAsset(String assetId, {String? format}) async {
+    final query = <String, String>{};
+    if (format != null && format.trim().isNotEmpty) {
+      query['format'] = format.trim();
+    }
+    final data = await _api.getJson('/assets/$assetId/download', auth: true, query: query.isEmpty ? null : query);
     return data['url']?.toString() ?? '';
   }
 

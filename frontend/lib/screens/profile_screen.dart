@@ -843,7 +843,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Widget _avatar(double size) {
-    return Container(
+    final avatar = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -851,14 +851,37 @@ class _WebProfileState extends State<_WebProfile> {
         color: Colors.white.withOpacity(0.10),
         border: Border.all(color: Colors.white.withOpacity(0.22), width: 1.2),
       ),
-      child: ClipOval(
-        child: avatarBytes != null
-            ? Image.memory(avatarBytes!, fit: BoxFit.cover)
-            : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
-                ? Image.network(avatarUrl!, fit: BoxFit.cover)
-                : const Icon(Icons.person, size: 42, color: Colors.white54)),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipOval(
+              child: avatarBytes != null
+                  ? Image.memory(avatarBytes!, fit: BoxFit.cover)
+                  : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
+                      ? Image.network(avatarUrl!, fit: BoxFit.cover)
+                      : const Icon(Icons.person, size: 42, color: Colors.white54)),
+            ),
+          ),
+          if (_isSelf)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                width: size * 0.26,
+                height: size * 0.26,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white.withOpacity(0.4)),
+                ),
+                child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: size * 0.14),
+              ),
+            ),
+        ],
       ),
     );
+    if (!_isSelf) return avatar;
+    return GestureDetector(onTap: _openEditProfileDialog, child: avatar);
   }
 
   Widget _emptyTabState({
@@ -1655,7 +1678,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Widget _avatar(double size) {
-    return Container(
+    final avatar = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -1663,14 +1686,37 @@ class _MobileProfileState extends State<_MobileProfile> {
         color: Colors.white.withOpacity(0.10),
         border: Border.all(color: Colors.white.withOpacity(0.22), width: 1.2),
       ),
-      child: ClipOval(
-        child: avatarBytes != null
-            ? Image.memory(avatarBytes!, fit: BoxFit.cover)
-            : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
-                ? Image.network(avatarUrl!, fit: BoxFit.cover)
-                : const Icon(Icons.person, size: 52, color: Colors.white54)),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipOval(
+              child: avatarBytes != null
+                  ? Image.memory(avatarBytes!, fit: BoxFit.cover)
+                  : (avatarUrl != null && avatarUrl!.isNotEmpty && !avatarUrl!.startsWith('data:image')
+                      ? Image.network(avatarUrl!, fit: BoxFit.cover)
+                      : const Icon(Icons.person, size: 52, color: Colors.white54)),
+            ),
+          ),
+          if (_isSelf)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                width: size * 0.26,
+                height: size * 0.26,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white.withOpacity(0.4)),
+                ),
+                child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: size * 0.14),
+              ),
+            ),
+        ],
       ),
     );
+    if (!_isSelf) return avatar;
+    return GestureDetector(onTap: _openEditProfileDialog, child: avatar);
   }
 }
 
@@ -1764,9 +1810,9 @@ class _PillTag extends StatelessWidget {
 Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) async {
   final bool isWebWide = MediaQuery.of(context).size.width >= 900;
 
-  Future<void> startDownload() async {
+  Future<void> startDownload({String? format}) async {
     try {
-      final url = await r2vMarketplace.downloadAsset(asset.id);
+      final url = await r2vMarketplace.downloadAsset(asset.id, format: format);
       if (url.isEmpty) {
         throw Exception('Missing download url');
       }
@@ -1791,13 +1837,13 @@ Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) asy
         insetPadding: const EdgeInsets.all(16),
         child: SizedBox(
           width: 360,
-          child: AssetDetailsPanel(
-            asset: asset,
-            onClose: () => Navigator.pop(context),
-            onFreeDownload: (_) => startDownload(),
-            onPaidBuy: (selected) => Navigator.pushNamed(
-              context,
-              '/payment',
+            child: AssetDetailsPanel(
+              asset: asset,
+              onClose: () => Navigator.pop(context),
+              onFreeDownload: (_, format) => startDownload(format: format),
+              onPaidBuy: (selected) => Navigator.pushNamed(
+                context,
+                '/payment',
               arguments: selected,
             ),
           ),
@@ -1816,7 +1862,7 @@ Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) asy
           child: AssetDetailsPanel(
             asset: asset,
             onClose: () => Navigator.pop(context),
-            onFreeDownload: (_) => startDownload(),
+            onFreeDownload: (_, format) => startDownload(format: format),
             onPaidBuy: (selected) => Navigator.pushNamed(
               context,
               '/payment',
