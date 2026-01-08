@@ -58,6 +58,12 @@ class _WebProfileState extends State<_WebProfile> {
   bool _loadingPosts = false;
   String? _postsError;
   List<MarketplaceAsset> _posts = [];
+  bool _loadingSaved = false;
+  bool _loadingLiked = false;
+  String? _savedError;
+  String? _likedError;
+  List<MarketplaceAsset> _savedAssets = [];
+  List<MarketplaceAsset> _likedAssets = [];
 
   @override
   void initState() {
@@ -112,6 +118,79 @@ class _WebProfileState extends State<_WebProfile> {
       setState(() => _postsError = 'Failed to load your posts');
     } finally {
       if (mounted) setState(() => _loadingPosts = false);
+    }
+  }
+
+  Future<void> _loadSaved() async {
+    setState(() {
+      _loadingSaved = true;
+      _savedError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listSavedAssets();
+      if (!mounted) return;
+      setState(() => _savedAssets = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _savedError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savedError = 'Failed to load saved assets');
+    } finally {
+      if (mounted) setState(() => _loadingSaved = false);
+    }
+  }
+
+  Future<void> _loadLiked() async {
+    setState(() {
+      _loadingLiked = true;
+      _likedError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listLikedAssets();
+      if (!mounted) return;
+      setState(() => _likedAssets = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _likedError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _likedError = 'Failed to load liked assets');
+    } finally {
+      if (mounted) setState(() => _loadingLiked = false);
+    }
+  }
+
+  Future<void> _confirmDeleteAsset(MarketplaceAsset asset) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete asset?'),
+        content: const Text('This will remove the asset from your profile and marketplace.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+    try {
+      await r2vMarketplace.deleteAsset(asset.id);
+      if (!mounted) return;
+      setState(() => _posts.removeWhere((item) => item.id == asset.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Asset deleted')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete asset')),
+      );
     }
   }
 
@@ -353,13 +432,23 @@ class _WebProfileState extends State<_WebProfile> {
               _TabChip(
                 label: "Saved",
                 active: _activeTab == ProfileTab.saved,
-                onTap: () => setState(() => _activeTab = ProfileTab.saved),
+                onTap: () {
+                  setState(() => _activeTab = ProfileTab.saved);
+                  if (_savedAssets.isEmpty && !_loadingSaved) {
+                    _loadSaved();
+                  }
+                },
               ),
               const SizedBox(width: 10),
               _TabChip(
                 label: "Liked",
                 active: _activeTab == ProfileTab.liked,
-                onTap: () => setState(() => _activeTab = ProfileTab.liked),
+                onTap: () {
+                  setState(() => _activeTab = ProfileTab.liked);
+                  if (_likedAssets.isEmpty && !_loadingLiked) {
+                    _loadLiked();
+                  }
+                },
               ),
             ],
           ),
@@ -369,13 +458,64 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Widget _glassGrid() {
-    if (_activeTab != ProfileTab.posts) {
-      return _emptyTabState(
-        title: _activeTab == ProfileTab.saved ? "No saved assets yet." : "No liked assets yet.",
-        onAction: () => Navigator.pushNamed(context, '/explore'),
+    if (_activeTab == ProfileTab.posts) {
+      if (_loadingPosts) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+        );
+      }
+      if (_postsError != null) {
+        return Center(
+          child: Column(
+            children: [
+              Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: _loadPosts,
+                child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+              ),
+            ],
+          ),
+        );
+      }
+      if (_posts.isEmpty) {
+        return _emptyTabState(
+          title: "No posts yet.",
+          onAction: () => Navigator.pushNamed(context, '/explore'),
+        );
+      }
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: _posts.map((asset) => _postTile(asset, showDelete: true)).toList(),
       );
     }
-    if (_loadingPosts) {
+    if (_activeTab == ProfileTab.saved) {
+      return _assetTabGrid(
+        assets: _savedAssets,
+        loading: _loadingSaved,
+        error: _savedError,
+        emptyTitle: "No saved assets yet.",
+      );
+    }
+    return _assetTabGrid(
+      assets: _likedAssets,
+      loading: _loadingLiked,
+      error: _likedError,
+      emptyTitle: "No liked assets yet.",
+    );
+  }
+
+  Widget _assetTabGrid({
+    required List<MarketplaceAsset> assets,
+    required bool loading,
+    required String? error,
+    required String emptyTitle,
+  }) {
+    if (loading) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
@@ -383,34 +523,34 @@ class _WebProfileState extends State<_WebProfile> {
         ),
       );
     }
-    if (_postsError != null) {
+    if (error != null) {
       return Center(
         child: Column(
           children: [
-            Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+            Text(error, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: _loadPosts,
+              onPressed: _activeTab == ProfileTab.saved ? _loadSaved : _loadLiked,
               child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
             ),
           ],
         ),
       );
     }
-    if (_posts.isEmpty) {
+    if (assets.isEmpty) {
       return _emptyTabState(
-        title: "No posts yet.",
+        title: emptyTitle,
         onAction: () => Navigator.pushNamed(context, '/explore'),
       );
     }
     return Wrap(
       spacing: 14,
       runSpacing: 14,
-      children: _posts.map(_postTile).toList(),
+      children: assets.map((asset) => _postTile(asset)).toList(),
     );
   }
 
-  Widget _postTile(MarketplaceAsset asset) {
+  Widget _postTile(MarketplaceAsset asset, {bool showDelete = false}) {
     final thumb = asset.thumbUrl ?? '';
     return Container(
       width: 240,
@@ -461,6 +601,25 @@ class _WebProfileState extends State<_WebProfile> {
                 ),
               ),
             ),
+            if (showDelete)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: InkWell(
+                  onTap: () => _confirmDeleteAsset(asset),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    child: const Icon(Icons.delete_outline, color: Colors.white, size: 16),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -550,6 +709,12 @@ class _MobileProfileState extends State<_MobileProfile> {
   bool _loadingPosts = false;
   String? _postsError;
   List<MarketplaceAsset> _posts = [];
+  bool _loadingSaved = false;
+  bool _loadingLiked = false;
+  String? _savedError;
+  String? _likedError;
+  List<MarketplaceAsset> _savedAssets = [];
+  List<MarketplaceAsset> _likedAssets = [];
 
   @override
   void initState() {
@@ -604,6 +769,79 @@ class _MobileProfileState extends State<_MobileProfile> {
       setState(() => _postsError = 'Failed to load your posts');
     } finally {
       if (mounted) setState(() => _loadingPosts = false);
+    }
+  }
+
+  Future<void> _loadSaved() async {
+    setState(() {
+      _loadingSaved = true;
+      _savedError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listSavedAssets();
+      if (!mounted) return;
+      setState(() => _savedAssets = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _savedError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savedError = 'Failed to load saved assets');
+    } finally {
+      if (mounted) setState(() => _loadingSaved = false);
+    }
+  }
+
+  Future<void> _loadLiked() async {
+    setState(() {
+      _loadingLiked = true;
+      _likedError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listLikedAssets();
+      if (!mounted) return;
+      setState(() => _likedAssets = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _likedError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _likedError = 'Failed to load liked assets');
+    } finally {
+      if (mounted) setState(() => _loadingLiked = false);
+    }
+  }
+
+  Future<void> _confirmDeleteAsset(MarketplaceAsset asset) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete asset?'),
+        content: const Text('This will remove the asset from your profile and marketplace.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+    try {
+      await r2vMarketplace.deleteAsset(asset.id);
+      if (!mounted) return;
+      setState(() => _posts.removeWhere((item) => item.id == asset.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Asset deleted')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete asset')),
+      );
     }
   }
 
@@ -791,13 +1029,23 @@ class _MobileProfileState extends State<_MobileProfile> {
               _TabChip(
                 label: "Saved",
                 active: _activeTab == ProfileTab.saved,
-                onTap: () => setState(() => _activeTab = ProfileTab.saved),
+                onTap: () {
+                  setState(() => _activeTab = ProfileTab.saved);
+                  if (_savedAssets.isEmpty && !_loadingSaved) {
+                    _loadSaved();
+                  }
+                },
               ),
               const SizedBox(width: 10),
               _TabChip(
                 label: "Liked",
                 active: _activeTab == ProfileTab.liked,
-                onTap: () => setState(() => _activeTab = ProfileTab.liked),
+                onTap: () {
+                  setState(() => _activeTab = ProfileTab.liked);
+                  if (_likedAssets.isEmpty && !_loadingLiked) {
+                    _loadLiked();
+                  }
+                },
               ),
             ],
           ),
@@ -807,49 +1055,98 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Widget _mobileGrid() {
-    if (_activeTab != ProfileTab.posts) {
-      return _mobileEmptyState(
-        title: _activeTab == ProfileTab.saved ? "No saved assets yet." : "No liked assets yet.",
-        onAction: () => Navigator.pushNamed(context, '/explore'),
+    if (_activeTab == ProfileTab.posts) {
+      if (_loadingPosts) {
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator(color: Colors.white)),
+        );
+      }
+      if (_postsError != null) {
+        return Center(
+          child: Column(
+            children: [
+              Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: _loadPosts,
+                child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+              ),
+            ],
+          ),
+        );
+      }
+      if (_posts.isEmpty) {
+        return _mobileEmptyState(
+          title: "No posts yet.",
+          onAction: () => Navigator.pushNamed(context, '/explore'),
+        );
+      }
+      return _mobileAssetGrid(_posts, showDelete: true);
+    }
+    if (_activeTab == ProfileTab.saved) {
+      return _mobileAssetTabGrid(
+        assets: _savedAssets,
+        loading: _loadingSaved,
+        error: _savedError,
+        emptyTitle: "No saved assets yet.",
       );
     }
-    if (_loadingPosts) {
+    return _mobileAssetTabGrid(
+      assets: _likedAssets,
+      loading: _loadingLiked,
+      error: _likedError,
+      emptyTitle: "No liked assets yet.",
+    );
+  }
+
+  Widget _mobileAssetTabGrid({
+    required List<MarketplaceAsset> assets,
+    required bool loading,
+    required String? error,
+    required String emptyTitle,
+  }) {
+    if (loading) {
       return const Padding(
         padding: EdgeInsets.all(24),
         child: Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
-    if (_postsError != null) {
+    if (error != null) {
       return Center(
         child: Column(
           children: [
-            Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+            Text(error, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: _loadPosts,
+              onPressed: _activeTab == ProfileTab.saved ? _loadSaved : _loadLiked,
               child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
             ),
           ],
         ),
       );
     }
-    if (_posts.isEmpty) {
+    if (assets.isEmpty) {
       return _mobileEmptyState(
-        title: "No posts yet.",
+        title: emptyTitle,
         onAction: () => Navigator.pushNamed(context, '/explore'),
       );
     }
+    return _mobileAssetGrid(assets);
+  }
+
+  Widget _mobileAssetGrid(List<MarketplaceAsset> assets, {bool showDelete = false}) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _posts.length,
+      itemCount: assets.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
       itemBuilder: (context, i) {
-        final asset = _posts[i];
+        final asset = assets[i];
         final thumb = asset.thumbUrl ?? '';
         return Container(
           decoration: BoxDecoration(
@@ -859,13 +1156,38 @@ class _MobileProfileState extends State<_MobileProfile> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: thumb.isEmpty
-                ? const Icon(Icons.image_rounded, color: Colors.white30)
-                : Image.network(
-                    thumb,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded, color: Colors.white30),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: thumb.isEmpty
+                      ? const Icon(Icons.image_rounded, color: Colors.white30)
+                      : Image.network(
+                          thumb,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded, color: Colors.white30),
+                        ),
+                ),
+                if (showDelete)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: InkWell(
+                      onTap: () => _confirmDeleteAsset(asset),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        ),
+                        child: const Icon(Icons.delete_outline, color: Colors.white, size: 14),
+                      ),
+                    ),
                   ),
+              ],
+            ),
           ),
         );
       },
