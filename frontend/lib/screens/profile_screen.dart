@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/marketplace_service.dart';
@@ -76,6 +77,10 @@ class _WebProfileState extends State<_WebProfile> {
   String? _likedError;
   List<MarketplaceAsset> _savedAssets = [];
   List<MarketplaceAsset> _likedAssets = [];
+
+  Future<void> _openAssetPreview(MarketplaceAsset asset) async {
+    await _showAssetPreview(context, asset);
+  }
 
   @override
   void initState() {
@@ -659,75 +664,82 @@ class _WebProfileState extends State<_WebProfile> {
 
   Widget _postTile(MarketplaceAsset asset, {bool showDelete = false}) {
     final thumb = asset.thumbUrl ?? '';
-    return Container(
-      width: 240,
-      height: 240,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.18),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openAssetPreview(asset),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: thumb.isEmpty
-                  ? Container(
-                      color: Colors.black.withOpacity(0.12),
-                      child: const Center(
-                        child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
-                      ),
-                    )
-                  : Image.network(
-                      thumb,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.black.withOpacity(0.12),
-                        child: const Center(
-                          child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
+        child: Container(
+          width: 240,
+          height: 240,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.18),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.10)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: thumb.isEmpty
+                      ? Container(
+                          color: Colors.black.withOpacity(0.12),
+                          child: const Center(
+                            child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
+                          ),
+                        )
+                      : Image.network(
+                          thumb,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.black.withOpacity(0.12),
+                            child: const Center(
+                              child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-            ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  asset.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
-                ),
-              ),
-            ),
-            if (showDelete)
-              Positioned(
-                top: 10,
-                right: 10,
-                child: InkWell(
-                  onTap: () => _confirmDeleteAsset(asset),
-                  borderRadius: BorderRadius.circular(999),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.delete_outline, color: Colors.white, size: 16),
+                    child: Text(
+                      asset.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
                   ),
                 ),
-              ),
-          ],
+                if (showDelete)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: InkWell(
+                      onTap: () => _confirmDeleteAsset(asset),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        ),
+                        child: const Icon(Icons.delete_outline, color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -830,6 +842,10 @@ class _MobileProfileState extends State<_MobileProfile> {
   String? _likedError;
   List<MarketplaceAsset> _savedAssets = [];
   List<MarketplaceAsset> _likedAssets = [];
+
+  Future<void> _openAssetPreview(MarketplaceAsset asset) async {
+    await _showAssetPreview(context, asset);
+  }
 
   @override
   void initState() {
@@ -1361,45 +1377,52 @@ class _MobileProfileState extends State<_MobileProfile> {
       itemBuilder: (context, i) {
         final asset = assets[i];
         final thumb = asset.thumbUrl ?? '';
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.14),
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _openAssetPreview(asset),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.10)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: thumb.isEmpty
-                      ? const Icon(Icons.image_rounded, color: Colors.white30)
-                      : Image.network(
-                          thumb,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded, color: Colors.white30),
-                        ),
-                ),
-                if (showDelete)
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: InkWell(
-                      onTap: () => _confirmDeleteAsset(asset),
-                      borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        ),
-                        child: const Icon(Icons.delete_outline, color: Colors.white, size: 14),
-                      ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.10)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: thumb.isEmpty
+                          ? const Icon(Icons.image_rounded, color: Colors.white30)
+                          : Image.network(
+                              thumb,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded, color: Colors.white30),
+                            ),
                     ),
-                  ),
-              ],
+                    if (showDelete)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: InkWell(
+                          onTap: () => _confirmDeleteAsset(asset),
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.2)),
+                            ),
+                            child: const Icon(Icons.delete_outline, color: Colors.white, size: 14),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -1529,6 +1552,129 @@ class _PillTag extends StatelessWidget {
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+}
+
+Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) async {
+  final model = asset.previewUrl ?? "";
+  final poster = asset.thumbUrl ?? "";
+  final title = asset.title.isNotEmpty ? asset.title : "Preview";
+  final bool isWebWide = MediaQuery.of(context).size.width >= 900;
+
+  if (isWebWide) {
+    await showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: _ProfileExpandedViewerShell(title: title, model: model, poster: poster),
+      ),
+    );
+  } else {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(12),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.90,
+          child: _ProfileExpandedViewerShell(title: title, model: model, poster: poster),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileExpandedViewerShell extends StatelessWidget {
+  final String title;
+  final String model;
+  final String poster;
+
+  const _ProfileExpandedViewerShell({
+    required this.title,
+    required this.model,
+    required this.poster,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.35),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withOpacity(0.14)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.10),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
+                        ),
+                        child: const Icon(Icons.close, size: 18, color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    color: Colors.black.withOpacity(0.18),
+                    child: model.isEmpty
+                        ? Center(
+                            child: Text(
+                              "Preview unavailable",
+                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                            ),
+                          )
+                        : ModelViewer(
+                            key: ValueKey("profile-expanded-$model"),
+                            src: model,
+                            poster: poster,
+                            backgroundColor: Colors.transparent,
+                            cameraControls: true,
+                            disableZoom: false,
+                            autoRotate: true,
+                            environmentImage: "neutral",
+                            exposure: 1.0,
+                            shadowIntensity: 0.8,
+                            shadowSoftness: 1,
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
