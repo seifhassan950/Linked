@@ -111,6 +111,14 @@ class MarketplaceService {
         .toList();
   }
 
+  Future<List<MarketplaceAsset>> listUserAssets(String userId) async {
+    final list = await _api.getJsonList('/marketplace/assets/user/$userId', auth: true);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(MarketplaceAsset.fromJson)
+        .toList();
+  }
+
   Future<List<MarketplaceAsset>> listLikedAssets() async {
     final list = await _api.getJsonList('/marketplace/assets/liked', auth: true);
     return list

@@ -9,6 +9,8 @@ class ProfileOut(BaseModel):
     posts: int
     followers: int
     following: int
+    is_following: bool = False
+    is_self: bool = False
 
 class PostCreateIn(BaseModel):
     asset_id: str | None = None

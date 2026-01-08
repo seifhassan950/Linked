@@ -14,8 +14,9 @@ import '../api/marketplace_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
+  final String? userId;
 
-  const ProfileScreen({super.key, this.username = 'User'});
+  const ProfileScreen({super.key, this.username = 'User', this.userId});
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +26,9 @@ class ProfileScreen extends StatelessWidget {
       children: [
         const Positioned.fill(child: ParticleMeshBackground()),
         Positioned.fill(
-          child: isWeb ? _WebProfile(username: username) : _MobileProfile(username: username),
+          child: isWeb
+              ? _WebProfile(username: username, userId: userId)
+              : _MobileProfile(username: username, userId: userId),
         ),
       ],
     );
@@ -37,7 +40,8 @@ class ProfileScreen extends StatelessWidget {
 // ──────────────────────────────────────────────────────────
 class _WebProfile extends StatefulWidget {
   final String username;
-  const _WebProfile({required this.username});
+  final String? userId;
+  const _WebProfile({required this.username, this.userId});
 
   @override
   State<_WebProfile> createState() => _WebProfileState();
@@ -55,6 +59,13 @@ class _WebProfileState extends State<_WebProfile> {
   String? avatarUrl;
   Map<String, dynamic> _meta = {};
   bool _loadingProfile = false;
+  bool _loadingFollow = false;
+  String? _profileUserId;
+  bool _isSelf = true;
+  bool _isFollowing = false;
+  int _postsCount = 0;
+  int _followersCount = 0;
+  int _followingCount = 0;
   bool _loadingPosts = false;
   String? _postsError;
   List<MarketplaceAsset> _posts = [];
@@ -69,22 +80,43 @@ class _WebProfileState extends State<_WebProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
-    _loadProfile();
-    _loadPosts();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadProfile();
+    await _loadPosts();
   }
 
   Future<void> _loadProfile() async {
     setState(() => _loadingProfile = true);
     try {
       final profile = await r2vProfile.me();
+      final targetUserId = widget.userId ?? profile.id;
+      final socialProfile = await r2vSocial.getProfile(targetUserId);
       if (!mounted) return;
       setState(() {
-        displayName = profile.username.isNotEmpty ? profile.username : displayName;
-        displayBio = profile.bio ?? displayBio;
-        _meta = profile.meta;
-        displayRole = profile.meta['role']?.toString() ?? displayRole;
-        avatarUrl = profile.avatarUrl;
-        avatarBytes = _decodeAvatar(profile.avatarUrl);
+        _profileUserId = targetUserId;
+        _isSelf = socialProfile.isSelf || profile.id == targetUserId;
+        _isFollowing = socialProfile.isFollowing;
+        _postsCount = socialProfile.posts;
+        _followersCount = socialProfile.followers;
+        _followingCount = socialProfile.following;
+        displayName = socialProfile.username.isNotEmpty ? socialProfile.username : displayName;
+        displayBio = socialProfile.bio ?? displayBio;
+        avatarUrl = socialProfile.avatarUrl;
+        avatarBytes = _decodeAvatar(socialProfile.avatarUrl);
+        if (_isSelf) {
+          displayName = profile.username.isNotEmpty ? profile.username : displayName;
+          displayBio = profile.bio ?? displayBio;
+          _meta = profile.meta;
+          displayRole = profile.meta['role']?.toString() ?? displayRole;
+          avatarUrl = profile.avatarUrl ?? avatarUrl;
+          avatarBytes = _decodeAvatar(profile.avatarUrl) ?? avatarBytes;
+        }
+        if (!_isSelf) {
+          _activeTab = ProfileTab.posts;
+        }
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -102,26 +134,33 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _loadPosts() async {
+    if (_profileUserId == null || _profileUserId!.isEmpty) return;
     setState(() {
       _loadingPosts = true;
       _postsError = null;
     });
     try {
-      final assets = await r2vMarketplace.listMyAssets();
+      final assets = _isSelf
+          ? await r2vMarketplace.listMyAssets()
+          : await r2vMarketplace.listUserAssets(_profileUserId!);
       if (!mounted) return;
-      setState(() => _posts = assets);
+      setState(() {
+        _posts = assets;
+        _postsCount = assets.length;
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _postsError = e.message);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _postsError = 'Failed to load your posts');
+      setState(() => _postsError = _isSelf ? 'Failed to load your posts' : 'Failed to load posts');
     } finally {
       if (mounted) setState(() => _loadingPosts = false);
     }
   }
 
   Future<void> _loadSaved() async {
+    if (!_isSelf) return;
     setState(() {
       _loadingSaved = true;
       _savedError = null;
@@ -142,6 +181,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _loadLiked() async {
+    if (!_isSelf) return;
     setState(() {
       _loadingLiked = true;
       _likedError = null;
@@ -162,6 +202,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _confirmDeleteAsset(MarketplaceAsset asset) async {
+    if (!_isSelf) return;
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -177,7 +218,10 @@ class _WebProfileState extends State<_WebProfile> {
     try {
       await r2vMarketplace.deleteAsset(asset.id);
       if (!mounted) return;
-      setState(() => _posts.removeWhere((item) => item.id == asset.id));
+      setState(() {
+        _posts.removeWhere((item) => item.id == asset.id);
+        _postsCount = _posts.length;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Asset deleted')),
       );
@@ -207,6 +251,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _openEditProfileDialog() async {
+    if (!_isSelf) return;
     await showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
@@ -223,6 +268,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _saveProfile(String name, String role, String bio, Uint8List? bytes) async {
+    if (!_isSelf) return;
     final nextMeta = Map<String, dynamic>.from(_meta);
     nextMeta['role'] = role;
     final avatarDataUrl = bytes == null ? avatarUrl : _toDataUrl(bytes);
@@ -262,6 +308,35 @@ class _WebProfileState extends State<_WebProfile> {
   String _toDataUrl(Uint8List bytes) {
     final encoded = base64Encode(bytes);
     return 'data:image/png;base64,$encoded';
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_loadingFollow || _isSelf || _profileUserId == null) return;
+    setState(() => _loadingFollow = true);
+    try {
+      if (_isFollowing) {
+        await r2vSocial.unfollow(_profileUserId!);
+      } else {
+        await r2vSocial.follow(_profileUserId!);
+      }
+      if (!mounted) return;
+      setState(() {
+        _isFollowing = !_isFollowing;
+        _followersCount += _isFollowing ? 1 : -1;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFollowing ? 'Unable to unfollow user' : 'Unable to follow user')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingFollow = false);
+    }
   }
 
   @override
@@ -383,25 +458,38 @@ class _WebProfileState extends State<_WebProfile> {
 
               const SizedBox(width: 18),
 
-              _stat("151", "Posts"),
+              _stat('$_postsCount', "Posts"),
               const SizedBox(width: 26),
-              _stat("112K", "Followers"),
+              _stat('$_followersCount', "Followers"),
               const SizedBox(width: 26),
-              _stat("162", "Following"),
+              _stat('$_followingCount', "Following"),
               const SizedBox(width: 18),
 
-              ElevatedButton.icon(
-                onPressed: _openEditProfileDialog,
-                icon: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text("Edit Profile"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8A4FFF),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  elevation: 0,
-                ),
-              ),
+              _isSelf
+                  ? ElevatedButton.icon(
+                      onPressed: _openEditProfileDialog,
+                      icon: const Icon(Icons.edit_rounded, size: 18),
+                      label: const Text("Edit Profile"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8A4FFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        elevation: 0,
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _loadingFollow ? null : _toggleFollow,
+                      icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_alt_1_rounded, size: 18),
+                      label: Text(_isFollowing ? "Following" : "Follow"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isFollowing ? Colors.white.withOpacity(0.12) : const Color(0xFF8A4FFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                        elevation: 0,
+                      ),
+                    ),
             ],
           ),
         ),
@@ -428,28 +516,30 @@ class _WebProfileState extends State<_WebProfile> {
                 active: _activeTab == ProfileTab.posts,
                 onTap: () => setState(() => _activeTab = ProfileTab.posts),
               ),
-              const SizedBox(width: 10),
-              _TabChip(
-                label: "Saved",
-                active: _activeTab == ProfileTab.saved,
-                onTap: () {
-                  setState(() => _activeTab = ProfileTab.saved);
-                  if (_savedAssets.isEmpty && !_loadingSaved) {
-                    _loadSaved();
-                  }
-                },
-              ),
-              const SizedBox(width: 10),
-              _TabChip(
-                label: "Liked",
-                active: _activeTab == ProfileTab.liked,
-                onTap: () {
-                  setState(() => _activeTab = ProfileTab.liked);
-                  if (_likedAssets.isEmpty && !_loadingLiked) {
-                    _loadLiked();
-                  }
-                },
-              ),
+              if (_isSelf) ...[
+                const SizedBox(width: 10),
+                _TabChip(
+                  label: "Saved",
+                  active: _activeTab == ProfileTab.saved,
+                  onTap: () {
+                    setState(() => _activeTab = ProfileTab.saved);
+                    if (_savedAssets.isEmpty && !_loadingSaved) {
+                      _loadSaved();
+                    }
+                  },
+                ),
+                const SizedBox(width: 10),
+                _TabChip(
+                  label: "Liked",
+                  active: _activeTab == ProfileTab.liked,
+                  onTap: () {
+                    setState(() => _activeTab = ProfileTab.liked);
+                    if (_likedAssets.isEmpty && !_loadingLiked) {
+                      _loadLiked();
+                    }
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -490,7 +580,7 @@ class _WebProfileState extends State<_WebProfile> {
       return Wrap(
         spacing: 14,
         runSpacing: 14,
-        children: _posts.map((asset) => _postTile(asset, showDelete: true)).toList(),
+        children: _posts.map((asset) => _postTile(asset, showDelete: _isSelf)).toList(),
       );
     }
     if (_activeTab == ProfileTab.saved) {
@@ -691,7 +781,8 @@ class _WebProfileState extends State<_WebProfile> {
 // ──────────────────────────────────────────────────────────
 class _MobileProfile extends StatefulWidget {
   final String username;
-  const _MobileProfile({required this.username});
+  final String? userId;
+  const _MobileProfile({required this.username, this.userId});
 
   @override
   State<_MobileProfile> createState() => _MobileProfileState();
@@ -705,6 +796,13 @@ class _MobileProfileState extends State<_MobileProfile> {
   String? avatarUrl;
   Map<String, dynamic> _meta = {};
   bool _loadingProfile = false;
+  bool _loadingFollow = false;
+  String? _profileUserId;
+  bool _isSelf = true;
+  bool _isFollowing = false;
+  int _postsCount = 0;
+  int _followersCount = 0;
+  int _followingCount = 0;
   ProfileTab _activeTab = ProfileTab.posts;
   bool _loadingPosts = false;
   String? _postsError;
@@ -720,22 +818,43 @@ class _MobileProfileState extends State<_MobileProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
-    _loadProfile();
-    _loadPosts();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadProfile();
+    await _loadPosts();
   }
 
   Future<void> _loadProfile() async {
     setState(() => _loadingProfile = true);
     try {
       final profile = await r2vProfile.me();
+      final targetUserId = widget.userId ?? profile.id;
+      final socialProfile = await r2vSocial.getProfile(targetUserId);
       if (!mounted) return;
       setState(() {
-        displayName = profile.username.isNotEmpty ? profile.username : displayName;
-        displayBio = profile.bio ?? displayBio;
-        _meta = profile.meta;
-        displayRole = profile.meta['role']?.toString() ?? displayRole;
-        avatarUrl = profile.avatarUrl;
-        avatarBytes = _decodeAvatar(profile.avatarUrl);
+        _profileUserId = targetUserId;
+        _isSelf = socialProfile.isSelf || profile.id == targetUserId;
+        _isFollowing = socialProfile.isFollowing;
+        _postsCount = socialProfile.posts;
+        _followersCount = socialProfile.followers;
+        _followingCount = socialProfile.following;
+        displayName = socialProfile.username.isNotEmpty ? socialProfile.username : displayName;
+        displayBio = socialProfile.bio ?? displayBio;
+        avatarUrl = socialProfile.avatarUrl;
+        avatarBytes = _decodeAvatar(socialProfile.avatarUrl);
+        if (_isSelf) {
+          displayName = profile.username.isNotEmpty ? profile.username : displayName;
+          displayBio = profile.bio ?? displayBio;
+          _meta = profile.meta;
+          displayRole = profile.meta['role']?.toString() ?? displayRole;
+          avatarUrl = profile.avatarUrl ?? avatarUrl;
+          avatarBytes = _decodeAvatar(profile.avatarUrl) ?? avatarBytes;
+        }
+        if (!_isSelf) {
+          _activeTab = ProfileTab.posts;
+        }
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -753,26 +872,33 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _loadPosts() async {
+    if (_profileUserId == null || _profileUserId!.isEmpty) return;
     setState(() {
       _loadingPosts = true;
       _postsError = null;
     });
     try {
-      final assets = await r2vMarketplace.listMyAssets();
+      final assets = _isSelf
+          ? await r2vMarketplace.listMyAssets()
+          : await r2vMarketplace.listUserAssets(_profileUserId!);
       if (!mounted) return;
-      setState(() => _posts = assets);
+      setState(() {
+        _posts = assets;
+        _postsCount = assets.length;
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _postsError = e.message);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _postsError = 'Failed to load your posts');
+      setState(() => _postsError = _isSelf ? 'Failed to load your posts' : 'Failed to load posts');
     } finally {
       if (mounted) setState(() => _loadingPosts = false);
     }
   }
 
   Future<void> _loadSaved() async {
+    if (!_isSelf) return;
     setState(() {
       _loadingSaved = true;
       _savedError = null;
@@ -793,6 +919,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _loadLiked() async {
+    if (!_isSelf) return;
     setState(() {
       _loadingLiked = true;
       _likedError = null;
@@ -813,6 +940,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _confirmDeleteAsset(MarketplaceAsset asset) async {
+    if (!_isSelf) return;
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -828,7 +956,10 @@ class _MobileProfileState extends State<_MobileProfile> {
     try {
       await r2vMarketplace.deleteAsset(asset.id);
       if (!mounted) return;
-      setState(() => _posts.removeWhere((item) => item.id == asset.id));
+      setState(() {
+        _posts.removeWhere((item) => item.id == asset.id);
+        _postsCount = _posts.length;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Asset deleted')),
       );
@@ -858,6 +989,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _openEditProfileDialog() async {
+    if (!_isSelf) return;
     await showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
@@ -874,6 +1006,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _saveProfile(String name, String role, String bio, Uint8List? bytes) async {
+    if (!_isSelf) return;
     final nextMeta = Map<String, dynamic>.from(_meta);
     nextMeta['role'] = role;
     final avatarDataUrl = bytes == null ? avatarUrl : _toDataUrl(bytes);
@@ -915,6 +1048,35 @@ class _MobileProfileState extends State<_MobileProfile> {
     return 'data:image/png;base64,$encoded';
   }
 
+  Future<void> _toggleFollow() async {
+    if (_loadingFollow || _isSelf || _profileUserId == null) return;
+    setState(() => _loadingFollow = true);
+    try {
+      if (_isFollowing) {
+        await r2vSocial.unfollow(_profileUserId!);
+      } else {
+        await r2vSocial.follow(_profileUserId!);
+      }
+      if (!mounted) return;
+      setState(() {
+        _isFollowing = !_isFollowing;
+        _followersCount += _isFollowing ? 1 : -1;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFollowing ? 'Unable to unfollow user' : 'Unable to follow user')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingFollow = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -926,11 +1088,12 @@ class _MobileProfileState extends State<_MobileProfile> {
         elevation: 0,
         title: const Text("Profile", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         actions: [
-          IconButton(
-            onPressed: _openEditProfileDialog,
-            icon: const Icon(Icons.edit_rounded, color: Color(0xFFBC70FF)),
-            tooltip: "Edit",
-          ),
+          if (_isSelf)
+            IconButton(
+              onPressed: _openEditProfileDialog,
+              icon: const Icon(Icons.edit_rounded, color: Color(0xFFBC70FF)),
+              tooltip: "Edit",
+            ),
         ],
       ),
 
@@ -978,26 +1141,41 @@ class _MobileProfileState extends State<_MobileProfile> {
               const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: const [
-                  _MStat(value: "151", label: "Posts"),
-                  _MStat(value: "112K", label: "Followers"),
-                  _MStat(value: "162", label: "Following"),
+                children: [
+                  _MStat(value: '$_postsCount', label: "Posts"),
+                  _MStat(value: '$_followersCount', label: "Followers"),
+                  _MStat(value: '$_followingCount', label: "Following"),
                 ],
               ),
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 height: 48,
-                child: ElevatedButton(
-                  onPressed: _openEditProfileDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8A4FFF),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
+                child: _isSelf
+                    ? ElevatedButton(
+                        onPressed: _openEditProfileDialog,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8A4FFF),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: const Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.w700)),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: _loadingFollow ? null : _toggleFollow,
+                        icon: Icon(
+                          _isFollowing ? Icons.check_rounded : Icons.person_add_alt_1_rounded,
+                          size: 18,
+                        ),
+                        label: Text(_isFollowing ? "Following" : "Follow"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isFollowing ? Colors.white.withOpacity(0.12) : const Color(0xFF8A4FFF),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -1025,28 +1203,30 @@ class _MobileProfileState extends State<_MobileProfile> {
                 active: _activeTab == ProfileTab.posts,
                 onTap: () => setState(() => _activeTab = ProfileTab.posts),
               ),
-              const SizedBox(width: 10),
-              _TabChip(
-                label: "Saved",
-                active: _activeTab == ProfileTab.saved,
-                onTap: () {
-                  setState(() => _activeTab = ProfileTab.saved);
-                  if (_savedAssets.isEmpty && !_loadingSaved) {
-                    _loadSaved();
-                  }
-                },
-              ),
-              const SizedBox(width: 10),
-              _TabChip(
-                label: "Liked",
-                active: _activeTab == ProfileTab.liked,
-                onTap: () {
-                  setState(() => _activeTab = ProfileTab.liked);
-                  if (_likedAssets.isEmpty && !_loadingLiked) {
-                    _loadLiked();
-                  }
-                },
-              ),
+              if (_isSelf) ...[
+                const SizedBox(width: 10),
+                _TabChip(
+                  label: "Saved",
+                  active: _activeTab == ProfileTab.saved,
+                  onTap: () {
+                    setState(() => _activeTab = ProfileTab.saved);
+                    if (_savedAssets.isEmpty && !_loadingSaved) {
+                      _loadSaved();
+                    }
+                  },
+                ),
+                const SizedBox(width: 10),
+                _TabChip(
+                  label: "Liked",
+                  active: _activeTab == ProfileTab.liked,
+                  onTap: () {
+                    setState(() => _activeTab = ProfileTab.liked);
+                    if (_likedAssets.isEmpty && !_loadingLiked) {
+                      _loadLiked();
+                    }
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -1082,7 +1262,7 @@ class _MobileProfileState extends State<_MobileProfile> {
           onAction: () => Navigator.pushNamed(context, '/explore'),
         );
       }
-      return _mobileAssetGrid(_posts, showDelete: true);
+      return _mobileAssetGrid(_posts, showDelete: _isSelf);
     }
     if (_activeTab == ProfileTab.saved) {
       return _mobileAssetTabGrid(
