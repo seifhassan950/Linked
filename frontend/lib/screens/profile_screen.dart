@@ -18,8 +18,9 @@ import 'explore_screen.dart';
 class ProfileScreen extends StatelessWidget {
   final String username;
   final String? userId;
+  final String? initialTab;
 
-  const ProfileScreen({super.key, this.username = 'User', this.userId});
+  const ProfileScreen({super.key, this.username = 'User', this.userId, this.initialTab});
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +31,8 @@ class ProfileScreen extends StatelessWidget {
         const Positioned.fill(child: ParticleMeshBackground()),
         Positioned.fill(
           child: isWeb
-              ? _WebProfile(username: username, userId: userId)
-              : _MobileProfile(username: username, userId: userId),
+              ? _WebProfile(username: username, userId: userId, initialTab: initialTab)
+              : _MobileProfile(username: username, userId: userId, initialTab: initialTab),
         ),
       ],
     );
@@ -44,7 +45,8 @@ class ProfileScreen extends StatelessWidget {
 class _WebProfile extends StatefulWidget {
   final String username;
   final String? userId;
-  const _WebProfile({required this.username, this.userId});
+  final String? initialTab;
+  const _WebProfile({required this.username, this.userId, this.initialTab});
 
   @override
   State<_WebProfile> createState() => _WebProfileState();
@@ -83,18 +85,35 @@ class _WebProfileState extends State<_WebProfile> {
     await _showAssetPreview(context, asset);
   }
 
+  void _applyInitialTab(String? tab) {
+    final parsed = _parseProfileTab(tab);
+    if (!_isSelf || parsed == null) return;
+    _activeTab = parsed;
+  }
+
+  Future<void> _loadInitialTabAssets() async {
+    if (!_isSelf) return;
+    if (_activeTab == ProfileTab.saved) {
+      await _loadSaved();
+    } else if (_activeTab == ProfileTab.liked) {
+      await _loadLiked();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
     _profileUserId = _normalizeUserId(widget.userId);
     _isSelf = _profileUserId == null;
+    _applyInitialTab(widget.initialTab);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     await _loadProfile();
     await _loadPosts();
+    await _loadInitialTabAssets();
   }
 
   Future<void> _loadProfile() async {
@@ -921,7 +940,8 @@ class _WebProfileState extends State<_WebProfile> {
 class _MobileProfile extends StatefulWidget {
   final String username;
   final String? userId;
-  const _MobileProfile({required this.username, this.userId});
+  final String? initialTab;
+  const _MobileProfile({required this.username, this.userId, this.initialTab});
 
   @override
   State<_MobileProfile> createState() => _MobileProfileState();
@@ -957,18 +977,35 @@ class _MobileProfileState extends State<_MobileProfile> {
     await _showAssetPreview(context, asset);
   }
 
+  void _applyInitialTab(String? tab) {
+    final parsed = _parseProfileTab(tab);
+    if (!_isSelf || parsed == null) return;
+    _activeTab = parsed;
+  }
+
+  Future<void> _loadInitialTabAssets() async {
+    if (!_isSelf) return;
+    if (_activeTab == ProfileTab.saved) {
+      await _loadSaved();
+    } else if (_activeTab == ProfileTab.liked) {
+      await _loadLiked();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
     _profileUserId = _normalizeUserId(widget.userId);
     _isSelf = _profileUserId == null;
+    _applyInitialTab(widget.initialTab);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     await _loadProfile();
     await _loadPosts();
+    await _loadInitialTabAssets();
   }
 
   Future<void> _loadProfile() async {
@@ -1752,6 +1789,19 @@ class _TabChip extends StatelessWidget {
 }
 
 enum ProfileTab { posts, saved, liked }
+
+ProfileTab? _parseProfileTab(String? value) {
+  switch (value?.toLowerCase()) {
+    case 'posts':
+      return ProfileTab.posts;
+    case 'saved':
+      return ProfileTab.saved;
+    case 'liked':
+      return ProfileTab.liked;
+    default:
+      return null;
+  }
+}
 
 class _MStat extends StatelessWidget {
   final String value;

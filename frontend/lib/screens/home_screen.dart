@@ -521,7 +521,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               onTap: () => Navigator.pushNamed(context, '/explore'),
                               primaryLabel: "Browse",
                               secondaryLabel: "Saved",
-                              onSecondaryTap: () => setState(() => _activeMarketModel = _models.first),
+                              onSecondaryTap: () => Navigator.pushNamed(
+                                context,
+                                '/profile',
+                                arguments: const {'tab': 'saved'},
+                              ),
                               bullets: const ["Preview", "Free/Paid", "Creators"],
                             ),
                           ),

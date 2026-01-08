@@ -134,13 +134,16 @@ initialRoute: '/signin',
             final args = settings.arguments;
             String? userId;
             String? username;
+            String? initialTab;
             if (args is Map) {
               userId = args['userId']?.toString();
               username = args['username']?.toString();
+              initialTab = args['tab']?.toString();
             }
             page = ProfileScreen(
               userId: userId,
               username: username ?? 'User',
+              initialTab: initialTab,
             );
             break;
           case '/editprofile':
