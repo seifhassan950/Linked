@@ -14,6 +14,16 @@ class S3Client:
             region_name=settings.s3_region,
             config=Config(signature_version="s3v4"),
         )
+        self.public_client = None
+        if settings.s3_public_endpoint_url:
+            self.public_client = boto3.client(
+                "s3",
+                endpoint_url=settings.s3_public_endpoint_url,
+                aws_access_key_id=settings.s3_access_key,
+                aws_secret_access_key=settings.s3_secret_key,
+                region_name=settings.s3_region,
+                config=Config(signature_version="s3v4"),
+            )
 
     def _apply_public_endpoint(self, url: str) -> str:
         if not settings.s3_public_endpoint_url:
@@ -42,11 +52,15 @@ class S3Client:
         params = {"Bucket": bucket, "Key": key}
         if content_type:
             params["ContentType"] = content_type
-        return self.client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
+        client = self.public_client or self.client
+        return client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
 
     def presign_get(self, bucket: str, key: str, expires: int = 3600) -> str:
-        url = self.client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires)
-        return self._apply_public_endpoint(url)
+        client = self.public_client or self.client
+        url = client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires)
+        if client is self.client:
+            return self._apply_public_endpoint(url)
+        return url
 
     def upload_file(self, local_path: str, bucket: str, key: str, content_type: str | None = None) -> None:
         extra = {"ContentType": content_type} if content_type else {}
