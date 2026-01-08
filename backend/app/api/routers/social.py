@@ -1,6 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from uuid import UUID
 from sqlalchemy import select, desc, func, or_
 from app.api.deps import get_db, get_current_user
 from app.api.schemas.social import PostCreateIn, PostOut, ProfileOut
@@ -47,7 +48,7 @@ def save(post_id: str, db: Session = Depends(get_db), user = Depends(get_current
     return {"detail": "ok"}
 
 @router.post("/follow/{user_id}")
-def follow(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def follow(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
     existing = db.execute(select(Follow).where(Follow.follower_id==user.id, Follow.following_id==user_id)).scalar_one_or_none()
     if existing:
         conflict("Already following")
@@ -56,7 +57,7 @@ def follow(user_id: str, db: Session = Depends(get_db), user = Depends(get_curre
     return {"detail": "ok"}
 
 @router.delete("/follow/{user_id}")
-def unfollow(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def unfollow(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
     existing = db.execute(select(Follow).where(Follow.follower_id==user.id, Follow.following_id==user_id)).scalar_one_or_none()
     if not existing:
         not_found("Follow not found")
@@ -65,7 +66,7 @@ def unfollow(user_id: str, db: Session = Depends(get_db), user = Depends(get_cur
     return {"detail": "ok"}
 
 @router.get("/profile/{user_id}", response_model=ProfileOut)
-def profile(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def profile(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
     prof = db.get(UserProfile, user_id)
     if not prof: not_found("Profile not found")
     posts_stmt = select(func.count()).select_from(Asset).where(Asset.creator_id==user_id)
