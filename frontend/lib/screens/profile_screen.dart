@@ -310,35 +310,7 @@ class _WebProfileState extends State<_WebProfile> {
     return 'data:image/png;base64,$encoded';
   }
 
-  Future<void> _toggleFollow() async {
-    if (_loadingFollow || _isSelf || _profileUserId == null) return;
-    setState(() => _loadingFollow = true);
-    try {
-      if (_isFollowing) {
-        await r2vSocial.unfollow(_profileUserId!);
-      } else {
-        await r2vSocial.follow(_profileUserId!);
-      }
-      if (!mounted) return;
-      setState(() {
-        _isFollowing = !_isFollowing;
-        _followersCount += _isFollowing ? 1 : -1;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFollowing ? 'Unable to unfollow user' : 'Unable to follow user')),
-      );
-    } finally {
-      if (mounted) setState(() => _loadingFollow = false);
-    }
-  }
-
+  // Follow/unfollow handler (web profile)
   Future<void> _toggleFollow() async {
     if (_loadingFollow || _isSelf || _profileUserId == null) return;
     setState(() => _loadingFollow = true);
@@ -1075,6 +1047,36 @@ class _MobileProfileState extends State<_MobileProfile> {
   String _toDataUrl(Uint8List bytes) {
     final encoded = base64Encode(bytes);
     return 'data:image/png;base64,$encoded';
+  }
+
+  // Follow/unfollow handler (mobile profile)
+  Future<void> _toggleFollow() async {
+    if (_loadingFollow || _isSelf || _profileUserId == null) return;
+    setState(() => _loadingFollow = true);
+    try {
+      if (_isFollowing) {
+        await r2vSocial.unfollow(_profileUserId!);
+      } else {
+        await r2vSocial.follow(_profileUserId!);
+      }
+      if (!mounted) return;
+      setState(() {
+        _isFollowing = !_isFollowing;
+        _followersCount += _isFollowing ? 1 : -1;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFollowing ? 'Unable to unfollow user' : 'Unable to follow user')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingFollow = false);
+    }
   }
 
   @override
