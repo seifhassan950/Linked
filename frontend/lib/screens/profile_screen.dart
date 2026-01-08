@@ -80,6 +80,8 @@ class _WebProfileState extends State<_WebProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
+    _profileUserId = widget.userId;
+    _isSelf = widget.userId == null;
     _bootstrap();
   }
 
@@ -819,6 +821,8 @@ class _MobileProfileState extends State<_MobileProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
+    _profileUserId = widget.userId;
+    _isSelf = widget.userId == null;
     _bootstrap();
   }
 
