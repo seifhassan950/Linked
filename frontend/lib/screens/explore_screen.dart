@@ -169,7 +169,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                 child: AssetDetailsPanel(
                                   asset: _selectedAsset!,
                                   onClose: () => setState(() => _selectedAsset = null),
-                                  onFreeDownload: (asset) => _startDownload(context, asset),
+                                  onFreeDownload: (asset, format) => _startDownload(context, asset, format: format),
                                   onPaidBuy: (asset) => Navigator.pushNamed(
                                     context,
                                     '/payment',
@@ -371,7 +371,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           child: AssetDetailsPanel(
             asset: item,
             onClose: () => Navigator.pop(context),
-            onFreeDownload: (asset) => _startDownload(context, asset),
+            onFreeDownload: (asset, format) => _startDownload(context, asset, format: format),
             onPaidBuy: (asset) => Navigator.pushNamed(
               context,
               '/payment',
@@ -742,9 +742,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return "EGP $p";
   }
 
-  Future<void> _startDownload(BuildContext context, MarketplaceAsset asset) async {
+  Future<void> _startDownload(BuildContext context, MarketplaceAsset asset, {String? format}) async {
     try {
-      final url = await r2vMarketplace.downloadAsset(asset.id);
+      final url = await r2vMarketplace.downloadAsset(asset.id, format: format);
       if (url.isEmpty) {
         throw Exception('Missing download url');
       }
@@ -945,6 +945,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
     try {
       final modelName = _modelName ?? 'model.glb';
       final modelExt = modelName.split('.').last.toLowerCase();
+      final modelFormat = '.${modelExt.isEmpty ? 'glb' : modelExt}';
       final modelMime = _modelMimeType(modelExt);
       final modelPresign = await r2vMarketplace.presignAssetUpload(
         filename: modelName,
@@ -987,6 +988,10 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
         modelObjectKey: modelPresign['key']!,
         thumbObjectKey: thumbPresign['key']!,
         previewObjectKeys: [modelPresign['key']!],
+        metadata: {
+          'formats': [modelFormat],
+          'format_keys': {modelFormat: modelPresign['key']!},
+        },
       );
       await r2vMarketplace.publishAsset(asset.id);
       if (!mounted) return;
@@ -1607,7 +1612,7 @@ class AssetDetailsPanel extends StatefulWidget {
   final VoidCallback onClose;
 
   final void Function(MarketplaceAsset asset) onPaidBuy;
-  final void Function(MarketplaceAsset asset) onFreeDownload;
+  final void Function(MarketplaceAsset asset, String? format) onFreeDownload;
 
   const AssetDetailsPanel({
     super.key,
@@ -1628,6 +1633,8 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   late int _likesCount;
   bool _liking = false;
   bool _saving = false;
+  late final List<String> _formats;
+  String? _selectedFormat;
 
   Future<void> _openExpanded(BuildContext context) async {
     setState(() => _expandedOpen = true);
@@ -1679,6 +1686,39 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   void initState() {
     super.initState();
     _likesCount = int.tryParse(widget.asset.likes) ?? 0;
+    _formats = _buildFormats(widget.asset);
+    _selectedFormat = _formats.isNotEmpty ? _formats.first : null;
+  }
+
+  List<String> _buildFormats(MarketplaceAsset asset) {
+    final formats = <String>[];
+    final rawFormats = asset.metadata['formats'];
+    if (rawFormats is List) {
+      for (final entry in rawFormats) {
+        final normalized = _normalizeFormat(entry?.toString());
+        if (normalized != null && !formats.contains(normalized)) {
+          formats.add(normalized);
+        }
+      }
+    }
+    final fallbackExt = _formatFromKey(asset.modelObjectKey);
+    if (formats.isEmpty && fallbackExt != null) {
+      formats.add(fallbackExt);
+    }
+    return formats;
+  }
+
+  String? _normalizeFormat(String? raw) {
+    final trimmed = raw?.trim().toLowerCase();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed.startsWith('.') ? trimmed : '.$trimmed';
+  }
+
+  String? _formatFromKey(String? key) {
+    if (key == null || !key.contains('.')) return null;
+    final ext = key.split('.').last.trim().toLowerCase();
+    if (ext.isEmpty) return null;
+    return '.$ext';
   }
 
   Future<void> _toggleLike() async {
@@ -1952,24 +1992,40 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                         style: TextStyle(color: Colors.white.withOpacity(0.95), fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [".obj", ".fbx", ".glb", ".usdz", ".stl"]
-                            .map((f) => Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.08),
+                      if (_formats.isEmpty)
+                        Text(
+                          "Format info unavailable",
+                          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _formats
+                              .map((f) => InkWell(
+                                    onTap: () => setState(() => _selectedFormat = f),
                                     borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(color: Colors.white.withOpacity(0.12)),
-                                  ),
-                                  child: Text(
-                                    f,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: _selectedFormat == f
+                                            ? const Color(0xFF4CC9F0).withOpacity(0.28)
+                                            : Colors.white.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: _selectedFormat == f
+                                              ? const Color(0xFF4CC9F0)
+                                              : Colors.white.withOpacity(0.12),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        f,
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
                       const SizedBox(height: 18),
                     ],
                   ),
@@ -2046,7 +2102,7 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                     child: ElevatedButton(
                       onPressed: () {
                         if (free) {
-                          widget.onFreeDownload(widget.asset);
+                          widget.onFreeDownload(widget.asset, _selectedFormat);
                         } else {
                           widget.onPaidBuy(widget.asset);
                         }

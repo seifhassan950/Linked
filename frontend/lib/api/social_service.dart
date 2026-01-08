@@ -73,12 +73,12 @@ class SocialService {
   }
 
   Future<List<SocialUser>> getFollowers(String userId) async {
-    final data = await _api.getJson('/social/followers/$userId', auth: true);
-    return (data as List<dynamic>).map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
+    final data = await _api.getJsonList('/social/followers/$userId', auth: true);
+    return data.map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
   }
 
   Future<List<SocialUser>> getFollowing(String userId) async {
-    final data = await _api.getJson('/social/following/$userId', auth: true);
-    return (data as List<dynamic>).map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
+    final data = await _api.getJsonList('/social/following/$userId', auth: true);
+    return data.map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
   }
 }
