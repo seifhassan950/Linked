@@ -12,6 +12,11 @@ class ProfileOut(BaseModel):
     is_following: bool = False
     is_self: bool = False
 
+class FollowUserOut(BaseModel):
+    user_id: str
+    username: str
+    avatar_url: str | None = None
+
 class PostCreateIn(BaseModel):
     asset_id: str | None = None
     caption: str | None = None

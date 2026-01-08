@@ -38,6 +38,22 @@ class SocialProfile {
   }
 }
 
+class SocialUser {
+  final String userId;
+  final String username;
+  final String? avatarUrl;
+
+  const SocialUser({required this.userId, required this.username, required this.avatarUrl});
+
+  factory SocialUser.fromJson(Map<String, dynamic> json) {
+    return SocialUser(
+      userId: json['user_id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      avatarUrl: json['avatar_url']?.toString(),
+    );
+  }
+}
+
 class SocialService {
   SocialService(this._api);
 
@@ -54,5 +70,15 @@ class SocialService {
 
   Future<void> unfollow(String userId) async {
     await _api.deleteJson('/social/follow/$userId', auth: true);
+  }
+
+  Future<List<SocialUser>> getFollowers(String userId) async {
+    final data = await _api.getJson('/social/followers/$userId', auth: true);
+    return (data as List<dynamic>).map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<SocialUser>> getFollowing(String userId) async {
+    final data = await _api.getJson('/social/following/$userId', auth: true);
+    return (data as List<dynamic>).map((entry) => SocialUser.fromJson(entry as Map<String, dynamic>)).toList();
   }
 }

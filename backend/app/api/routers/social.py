@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from sqlalchemy import select, desc, func, or_
 from app.api.deps import get_db, get_current_user
-from app.api.schemas.social import PostCreateIn, PostOut, ProfileOut
+from app.api.schemas.social import FollowUserOut, PostCreateIn, PostOut, ProfileOut
 from app.core.errors import not_found, conflict
 from app.db.models.social import Post, Like, Save, Follow
 from app.db.models.marketplace import Asset
@@ -99,3 +99,39 @@ def profile(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_cur
         is_following=is_following,
         is_self=user.id == user_id,
     )
+
+def _follow_user_out(user: User, profile: UserProfile | None) -> FollowUserOut:
+    username = profile.username if profile and profile.username else user.email.split("@")[0]
+    return FollowUserOut(
+        user_id=str(user.id),
+        username=username,
+        avatar_url=profile.avatar_url if profile else None,
+    )
+
+@router.get("/followers/{user_id}", response_model=list[FollowUserOut])
+def followers(user_id: UUID, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    stmt = (
+        select(User, UserProfile)
+        .join(Follow, Follow.follower_id == User.id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(Follow.following_id == user_id)
+        .order_by(UserProfile.username.nullslast(), User.email)
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = db.execute(stmt).all()
+    return [_follow_user_out(row[0], row[1]) for row in rows]
+
+@router.get("/following/{user_id}", response_model=list[FollowUserOut])
+def following(user_id: UUID, limit: int = 50, offset: int = 0, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    stmt = (
+        select(User, UserProfile)
+        .join(Follow, Follow.following_id == User.id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(Follow.follower_id == user_id)
+        .order_by(UserProfile.username.nullslast(), User.email)
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = db.execute(stmt).all()
+    return [_follow_user_out(row[0], row[1]) for row in rows]
