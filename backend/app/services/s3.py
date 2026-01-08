@@ -42,7 +42,8 @@ class S3Client:
         params = {"Bucket": bucket, "Key": key}
         if content_type:
             params["ContentType"] = content_type
-        return self.client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
+        url = self.client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
+        return self._apply_public_endpoint(url)
 
     def presign_get(self, bucket: str, key: str, expires: int = 3600) -> str:
         url = self.client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires)
