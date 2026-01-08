@@ -8,7 +8,7 @@ from app.api.schemas.social import PostCreateIn, PostOut, ProfileOut
 from app.core.errors import not_found, conflict
 from app.db.models.social import Post, Like, Save, Follow
 from app.db.models.marketplace import Asset
-from app.db.models.user import UserProfile
+from app.db.models.user import User, UserProfile
 
 router = APIRouter()
 
@@ -68,7 +68,15 @@ def unfollow(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_cu
 @router.get("/profile/{user_id}", response_model=ProfileOut)
 def profile(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
     prof = db.get(UserProfile, user_id)
-    if not prof: not_found("Profile not found")
+    if not prof:
+        target_user = db.get(User, user_id)
+        if not target_user:
+            not_found("Profile not found")
+        default_username = target_user.email.split("@")[0]
+        prof = UserProfile(user_id=user_id, username=default_username, bio=None, avatar_url=None, links=None)
+        db.add(prof)
+        db.commit()
+        db.refresh(prof)
     posts_stmt = select(func.count()).select_from(Asset).where(Asset.creator_id==user_id)
     if user.id != user_id:
         posts_stmt = posts_stmt.where(Asset.visibility == "published")
