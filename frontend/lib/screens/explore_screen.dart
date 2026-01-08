@@ -1386,6 +1386,9 @@ class AssetDetailsPanel extends StatefulWidget {
 
 class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   bool _expandedOpen = false;
+  bool _liked = false;
+  bool _saved = false;
+  late int _likesCount;
 
   Future<void> _openExpanded(BuildContext context) async {
     setState(() => _expandedOpen = true);
@@ -1434,10 +1437,33 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _likesCount = int.tryParse(widget.asset.likes) ?? 0;
+  }
+
+  void _toggleLike() {
+    setState(() {
+      _liked = !_liked;
+      _likesCount += _liked ? 1 : -1;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_liked ? 'Added to likes' : 'Removed from likes')),
+    );
+  }
+
+  void _toggleSave() {
+    setState(() => _saved = !_saved);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_saved ? 'Saved to your profile' : 'Removed from saved')),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final name = widget.asset.title;
     final author = widget.asset.author;
-    final likes = widget.asset.likes;
+    final likes = _likesCount.toString();
     final tag = widget.asset.category;
     final style = widget.asset.style;
     final model = widget.asset.previewUrl ?? "";
@@ -1633,6 +1659,48 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                     ],
                   ),
                 ),
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleLike,
+                      icon: Icon(
+                        _liked ? Icons.favorite : Icons.favorite_border_rounded,
+                        size: 18,
+                        color: _liked ? const Color(0xFFF72585) : Colors.white,
+                      ),
+                      label: Text(_liked ? "Liked" : "Like"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withOpacity(0.18)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleSave,
+                      icon: Icon(
+                        _saved ? Icons.bookmark : Icons.bookmark_border_rounded,
+                        size: 18,
+                        color: _saved ? const Color(0xFF4CC9F0) : Colors.white,
+                      ),
+                      label: Text(_saved ? "Saved" : "Save"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withOpacity(0.18)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 12),

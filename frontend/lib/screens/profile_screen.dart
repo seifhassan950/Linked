@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/scheduler.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
+import '../api/marketplace_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
@@ -54,12 +55,16 @@ class _WebProfileState extends State<_WebProfile> {
   String? avatarUrl;
   Map<String, dynamic> _meta = {};
   bool _loadingProfile = false;
+  bool _loadingPosts = false;
+  String? _postsError;
+  List<MarketplaceAsset> _posts = [];
 
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
     _loadProfile();
+    _loadPosts();
   }
 
   Future<void> _loadProfile() async {
@@ -87,6 +92,26 @@ class _WebProfileState extends State<_WebProfile> {
       );
     } finally {
       if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    setState(() {
+      _loadingPosts = true;
+      _postsError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listMyAssets();
+      if (!mounted) return;
+      setState(() => _posts = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _postsError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _postsError = 'Failed to load your posts');
+    } finally {
+      if (mounted) setState(() => _loadingPosts = false);
     }
   }
 
@@ -350,23 +375,95 @@ class _WebProfileState extends State<_WebProfile> {
         onAction: () => Navigator.pushNamed(context, '/explore'),
       );
     }
+    if (_loadingPosts) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+    if (_postsError != null) {
+      return Center(
+        child: Column(
+          children: [
+            Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _loadPosts,
+              child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_posts.isEmpty) {
+      return _emptyTabState(
+        title: "No posts yet.",
+        onAction: () => Navigator.pushNamed(context, '/explore'),
+      );
+    }
     return Wrap(
       spacing: 14,
       runSpacing: 14,
-      children: List.generate(12, (i) {
-        return Container(
-          width: 240,
-          height: 240,
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.18),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.10)),
-          ),
-          child: const Center(
-            child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
-          ),
-        );
-      }),
+      children: _posts.map(_postTile).toList(),
+    );
+  }
+
+  Widget _postTile(MarketplaceAsset asset) {
+    final thumb = asset.thumbUrl ?? '';
+    return Container(
+      width: 240,
+      height: 240,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: thumb.isEmpty
+                  ? Container(
+                      color: Colors.black.withOpacity(0.12),
+                      child: const Center(
+                        child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
+                      ),
+                    )
+                  : Image.network(
+                      thumb,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.black.withOpacity(0.12),
+                        child: const Center(
+                          child: Icon(Icons.image_rounded, color: Colors.white30, size: 60),
+                        ),
+                      ),
+                    ),
+            ),
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  asset.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -450,12 +547,16 @@ class _MobileProfileState extends State<_MobileProfile> {
   Map<String, dynamic> _meta = {};
   bool _loadingProfile = false;
   ProfileTab _activeTab = ProfileTab.posts;
+  bool _loadingPosts = false;
+  String? _postsError;
+  List<MarketplaceAsset> _posts = [];
 
   @override
   void initState() {
     super.initState();
     displayName = widget.username;
     _loadProfile();
+    _loadPosts();
   }
 
   Future<void> _loadProfile() async {
@@ -483,6 +584,26 @@ class _MobileProfileState extends State<_MobileProfile> {
       );
     } finally {
       if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    setState(() {
+      _loadingPosts = true;
+      _postsError = null;
+    });
+    try {
+      final assets = await r2vMarketplace.listMyAssets();
+      if (!mounted) return;
+      setState(() => _posts = assets);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _postsError = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _postsError = 'Failed to load your posts');
+    } finally {
+      if (mounted) setState(() => _loadingPosts = false);
     }
   }
 
@@ -692,23 +813,60 @@ class _MobileProfileState extends State<_MobileProfile> {
         onAction: () => Navigator.pushNamed(context, '/explore'),
       );
     }
+    if (_loadingPosts) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+    if (_postsError != null) {
+      return Center(
+        child: Column(
+          children: [
+            Text(_postsError!, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _loadPosts,
+              child: const Text("Retry", style: TextStyle(color: Color(0xFF4CC9F0))),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_posts.isEmpty) {
+      return _mobileEmptyState(
+        title: "No posts yet.",
+        onAction: () => Navigator.pushNamed(context, '/explore'),
+      );
+    }
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: 12,
+      itemCount: _posts.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
       itemBuilder: (context, i) {
+        final asset = _posts[i];
+        final thumb = asset.thumbUrl ?? '';
         return Container(
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.14),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.white.withOpacity(0.10)),
           ),
-          child: const Icon(Icons.image_rounded, color: Colors.white30),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: thumb.isEmpty
+                ? const Icon(Icons.image_rounded, color: Colors.white30)
+                : Image.network(
+                    thumb,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded, color: Colors.white30),
+                  ),
+          ),
         );
       },
     );
