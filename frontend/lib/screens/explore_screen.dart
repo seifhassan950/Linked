@@ -745,7 +745,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
     setState(() {
       _thumbnailBytes = file.bytes;
       _thumbnailName = file.name;
-      _thumbnailCaptured = false;
+      _thumbnailCaptured = true;
     });
   }
 
