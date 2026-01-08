@@ -175,6 +175,83 @@ class _WebProfileState extends State<_WebProfile> {
     }
   }
 
+  Future<void> _openFollowList({required bool showFollowers}) async {
+    final targetUserId = _profileUserId;
+    if (targetUserId == null || targetUserId.isEmpty) return;
+    final title = showFollowers ? 'Followers' : 'Following';
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 360,
+            child: FutureBuilder<List<SocialUser>>(
+              future: showFollowers ? r2vSocial.getFollowers(targetUserId) : r2vSocial.getFollowing(targetUserId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
+                }
+                if (snapshot.hasError) {
+                  return SizedBox(
+                    height: 220,
+                    child: Center(child: Text('Failed to load $title')),
+                  );
+                }
+                final users = snapshot.data ?? [];
+                if (users.isEmpty) {
+                  return SizedBox(
+                    height: 220,
+                    child: Center(child: Text('No ${title.toLowerCase()} yet')),
+                  );
+                }
+                return SizedBox(
+                  height: 320,
+                  child: ListView.separated(
+                    itemCount: users.length,
+                    separatorBuilder: (_, __) => Divider(color: Colors.grey.shade300, height: 1),
+                    itemBuilder: (context, index) {
+                      final user = users[index];
+                      return ListTile(
+                        leading: _followAvatar(user),
+                        title: Text(user.username),
+                        onTap: () {
+                          Navigator.of(dialogContext).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ProfileScreen(username: user.username, userId: user.userId),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _followAvatar(SocialUser user) {
+    final bytes = _decodeAvatar(user.avatarUrl);
+    if (bytes != null) {
+      return CircleAvatar(backgroundImage: MemoryImage(bytes));
+    }
+    if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
+      return CircleAvatar(backgroundImage: NetworkImage(user.avatarUrl!));
+    }
+    return CircleAvatar(
+      backgroundColor: Colors.white.withOpacity(0.12),
+      child: const Icon(Icons.person, color: Colors.white70),
+    );
+  }
+
   Future<void> _loadSaved() async {
     if (!_isSelf) return;
     setState(() {
@@ -483,9 +560,9 @@ class _WebProfileState extends State<_WebProfile> {
 
               _stat('$_postsCount', "Posts"),
               const SizedBox(width: 26),
-              _stat('$_followersCount', "Followers"),
+              _stat('$_followersCount', "Followers", onTap: () => _openFollowList(showFollowers: true)),
               const SizedBox(width: 26),
-              _stat('$_followingCount', "Following"),
+              _stat('$_followingCount', "Following", onTap: () => _openFollowList(showFollowers: false)),
               const SizedBox(width: 18),
 
               _isSelf
@@ -746,13 +823,22 @@ class _WebProfileState extends State<_WebProfile> {
     );
   }
 
-  Widget _stat(String value, String label) {
-    return Column(
+  Widget _stat(String value, String label, {VoidCallback? onTap}) {
+    final content = Column(
       children: [
         Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
         Text(label, style: TextStyle(color: Colors.white.withOpacity(0.70), fontSize: 12)),
       ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: content,
+      ),
     );
   }
 
@@ -938,6 +1024,105 @@ class _MobileProfileState extends State<_MobileProfile> {
     } finally {
       if (mounted) setState(() => _loadingPosts = false);
     }
+  }
+
+  Future<void> _openFollowSheet({required bool showFollowers}) async {
+    final targetUserId = _profileUserId;
+    if (targetUserId == null || targetUserId.isEmpty) return;
+    final title = showFollowers ? 'Followers' : 'Following';
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black.withOpacity(0.85),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                const SizedBox(height: 16),
+                FutureBuilder<List<SocialUser>>(
+                  future: showFollowers ? r2vSocial.getFollowers(targetUserId) : r2vSocial.getFollowing(targetUserId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Center(
+                          child: Text('Failed to load $title', style: const TextStyle(color: Colors.white70)),
+                        ),
+                      );
+                    }
+                    final users = snapshot.data ?? [];
+                    if (users.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Text('No ${title.toLowerCase()} yet', style: const TextStyle(color: Colors.white70)),
+                      );
+                    }
+                    return SizedBox(
+                      height: 360,
+                      child: ListView.separated(
+                        itemCount: users.length,
+                        separatorBuilder: (_, __) => Divider(color: Colors.white.withOpacity(0.1), height: 1),
+                        itemBuilder: (context, index) {
+                          final user = users[index];
+                          return ListTile(
+                            leading: _followAvatar(user),
+                            title: Text(user.username, style: const TextStyle(color: Colors.white)),
+                            onTap: () {
+                              Navigator.of(sheetContext).pop();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ProfileScreen(username: user.username, userId: user.userId),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _followAvatar(SocialUser user) {
+    final bytes = _decodeAvatar(user.avatarUrl);
+    if (bytes != null) {
+      return CircleAvatar(backgroundImage: MemoryImage(bytes));
+    }
+    if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
+      return CircleAvatar(backgroundImage: NetworkImage(user.avatarUrl!));
+    }
+    return CircleAvatar(
+      backgroundColor: Colors.white.withOpacity(0.12),
+      child: const Icon(Icons.person, color: Colors.white70),
+    );
   }
 
   Future<void> _loadSaved() async {
@@ -1193,8 +1378,16 @@ class _MobileProfileState extends State<_MobileProfile> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _MStat(value: '$_postsCount', label: "Posts"),
-                  _MStat(value: '$_followersCount', label: "Followers"),
-                  _MStat(value: '$_followingCount', label: "Following"),
+                  _MStat(
+                    value: '$_followersCount',
+                    label: "Followers",
+                    onTap: () => _openFollowSheet(showFollowers: true),
+                  ),
+                  _MStat(
+                    value: '$_followingCount',
+                    label: "Following",
+                    onTap: () => _openFollowSheet(showFollowers: false),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -1517,16 +1710,26 @@ enum ProfileTab { posts, saved, liked }
 class _MStat extends StatelessWidget {
   final String value;
   final String label;
-  const _MStat({required this.value, required this.label});
+  final VoidCallback? onTap;
+  const _MStat({required this.value, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       children: [
         Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
         const SizedBox(height: 3),
         Text(label, style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12)),
       ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: content,
+      ),
     );
   }
 }
