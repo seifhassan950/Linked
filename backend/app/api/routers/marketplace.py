@@ -11,6 +11,7 @@ from app.db.models.user import UserProfile
 from app.services.entitlements import is_entitled_to_asset
 from app.services.s3 import s3
 from app.core.config import settings
+from uuid import UUID
 import datetime as dt
 import uuid
 
@@ -111,7 +112,7 @@ def list_liked_assets(db: Session = Depends(get_db), user = Depends(get_current_
     return [to_out(a, profiles.get(a.creator_id)) for a in items]
 
 @router.get("/assets/user/{user_id}", response_model=list[AssetOut])
-def list_user_assets(user_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def list_user_assets(user_id: UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
     stmt = (
         select(Asset)
         .where(Asset.creator_id == user_id)
