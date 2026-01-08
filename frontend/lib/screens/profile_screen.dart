@@ -11,6 +11,7 @@ import 'package:flutter/scheduler.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/marketplace_service.dart';
+import '../api/social_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
