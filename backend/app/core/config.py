@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     s3_endpoint_url: str = "http://minio:9000"
+    s3_public_endpoint_url: str | None = None
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
     s3_region: str = "us-east-1"
