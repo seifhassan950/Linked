@@ -11,6 +11,7 @@ import 'package:flutter/scheduler.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/marketplace_service.dart';
+import '../api/social_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
@@ -95,19 +96,24 @@ class _WebProfileState extends State<_WebProfile> {
     try {
       final profile = await r2vProfile.me();
       final targetUserId = _normalizeUserId(widget.userId) ?? profile.id;
-      final socialProfile = await r2vSocial.getProfile(targetUserId);
+      SocialProfile? socialProfile;
+      try {
+        socialProfile = await r2vSocial.getProfile(targetUserId);
+      } on ApiException catch (e) {
+        if (e.statusCode != 404) rethrow;
+      }
       if (!mounted) return;
       setState(() {
         _profileUserId = targetUserId;
-        _isSelf = socialProfile.isSelf || profile.id == targetUserId;
-        _isFollowing = socialProfile.isFollowing;
-        _postsCount = socialProfile.posts;
-        _followersCount = socialProfile.followers;
-        _followingCount = socialProfile.following;
-        displayName = socialProfile.username.isNotEmpty ? socialProfile.username : displayName;
-        displayBio = socialProfile.bio ?? displayBio;
-        avatarUrl = socialProfile.avatarUrl;
-        avatarBytes = _decodeAvatar(socialProfile.avatarUrl);
+        _isSelf = (socialProfile?.isSelf ?? false) || profile.id == targetUserId;
+        _isFollowing = socialProfile?.isFollowing ?? false;
+        _postsCount = socialProfile?.posts ?? _postsCount;
+        _followersCount = socialProfile?.followers ?? _followersCount;
+        _followingCount = socialProfile?.following ?? _followingCount;
+        displayName = (socialProfile?.username.isNotEmpty ?? false) ? socialProfile!.username : displayName;
+        displayBio = socialProfile?.bio ?? displayBio;
+        avatarUrl = socialProfile?.avatarUrl ?? avatarUrl;
+        avatarBytes = _decodeAvatar(socialProfile?.avatarUrl) ?? avatarBytes;
         if (_isSelf) {
           displayName = profile.username.isNotEmpty ? profile.username : displayName;
           displayBio = profile.bio ?? displayBio;
@@ -122,9 +128,11 @@ class _WebProfileState extends State<_WebProfile> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      if (e.statusCode != 404) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -842,19 +850,24 @@ class _MobileProfileState extends State<_MobileProfile> {
     try {
       final profile = await r2vProfile.me();
       final targetUserId = _normalizeUserId(widget.userId) ?? profile.id;
-      final socialProfile = await r2vSocial.getProfile(targetUserId);
+      SocialProfile? socialProfile;
+      try {
+        socialProfile = await r2vSocial.getProfile(targetUserId);
+      } on ApiException catch (e) {
+        if (e.statusCode != 404) rethrow;
+      }
       if (!mounted) return;
       setState(() {
         _profileUserId = targetUserId;
-        _isSelf = socialProfile.isSelf || profile.id == targetUserId;
-        _isFollowing = socialProfile.isFollowing;
-        _postsCount = socialProfile.posts;
-        _followersCount = socialProfile.followers;
-        _followingCount = socialProfile.following;
-        displayName = socialProfile.username.isNotEmpty ? socialProfile.username : displayName;
-        displayBio = socialProfile.bio ?? displayBio;
-        avatarUrl = socialProfile.avatarUrl;
-        avatarBytes = _decodeAvatar(socialProfile.avatarUrl);
+        _isSelf = (socialProfile?.isSelf ?? false) || profile.id == targetUserId;
+        _isFollowing = socialProfile?.isFollowing ?? false;
+        _postsCount = socialProfile?.posts ?? _postsCount;
+        _followersCount = socialProfile?.followers ?? _followersCount;
+        _followingCount = socialProfile?.following ?? _followingCount;
+        displayName = (socialProfile?.username.isNotEmpty ?? false) ? socialProfile!.username : displayName;
+        displayBio = socialProfile?.bio ?? displayBio;
+        avatarUrl = socialProfile?.avatarUrl ?? avatarUrl;
+        avatarBytes = _decodeAvatar(socialProfile?.avatarUrl) ?? avatarBytes;
         if (_isSelf) {
           displayName = profile.username.isNotEmpty ? profile.username : displayName;
           displayBio = profile.bio ?? displayBio;
@@ -869,9 +882,11 @@ class _MobileProfileState extends State<_MobileProfile> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      if (e.statusCode != 404) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
