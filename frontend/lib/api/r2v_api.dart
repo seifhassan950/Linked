@@ -8,6 +8,7 @@ import 'marketplace_service.dart';
 import 'password_reset_service.dart';
 import 'profile_service.dart';
 import 'scan_jobs_service.dart';
+import 'social_service.dart';
 
 final ApiClient r2vApiClient = ApiClient();
 final AuthService r2vAuth = AuthService(r2vApiClient);
@@ -19,3 +20,4 @@ final ProfileService r2vProfile = ProfileService(r2vApiClient);
 final BillingService r2vBilling = BillingService(r2vApiClient);
 final PasswordResetService r2vPasswordReset = PasswordResetService(r2vApiClient);
 final EmailVerificationService r2vEmailVerification = EmailVerificationService(r2vApiClient);
+final SocialService r2vSocial = SocialService(r2vApiClient);

@@ -238,6 +238,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 child: AssetCard(
                   name: item.title,
                   author: item.author,
+                  creatorId: item.creatorId,
                   likes: item.likes,
                   tag: item.category,
                   styleTag: item.style,
@@ -245,6 +246,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   priceText: priceLabelEGP(item),
                   width: cardW,
                   onTap: () => setState(() => _selectedAsset = item),
+                  onAuthorTap: () => Navigator.pushNamed(
+                    context,
+                    '/profile',
+                    arguments: {'userId': item.creatorId, 'username': item.author},
+                  ),
                 ),
               );
             }).toList(),
@@ -316,6 +322,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     child: AssetCard(
                       name: item.title,
                       author: item.author,
+                      creatorId: item.creatorId,
                       likes: item.likes,
                       tag: item.category,
                       styleTag: item.style,
@@ -323,6 +330,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       priceText: priceLabelEGP(item),
                       width: double.infinity,
                       onTap: () => _openMobileDetails(item),
+                      onAuthorTap: () => Navigator.pushNamed(
+                        context,
+                        '/profile',
+                        arguments: {'userId': item.creatorId, 'username': item.author},
+                      ),
                     ),
                   );
                 }).toList(),
@@ -754,8 +766,9 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
         _showSnack('Unable to capture thumbnail.');
         return;
       }
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       setState(() {
-        _thumbnailBytes = data.buffer.asUint8List();
+        _thumbnailBytes = bytes;
         _thumbnailName = 'viewer-thumbnail.png';
         _thumbnailCaptured = true;
       });
@@ -1247,6 +1260,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
 class AssetCard extends StatelessWidget {
   final String name;
   final String author;
+  final String creatorId;
   final String likes;
   final String tag;
   final String styleTag;
@@ -1254,11 +1268,13 @@ class AssetCard extends StatelessWidget {
   final String priceText;
   final double width;
   final VoidCallback? onTap;
+  final VoidCallback? onAuthorTap;
 
   const AssetCard({
     super.key,
     required this.name,
     required this.author,
+    required this.creatorId,
     required this.likes,
     required this.tag,
     required this.styleTag,
@@ -1266,6 +1282,7 @@ class AssetCard extends StatelessWidget {
     required this.priceText,
     required this.width,
     this.onTap,
+    this.onAuthorTap,
   });
 
   @override
@@ -1328,7 +1345,10 @@ class AssetCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 3),
-            Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+            GestureDetector(
+              onTap: onAuthorTap,
+              child: Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1577,7 +1597,14 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                child: GestureDetector(
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    '/profile',
+                    arguments: {'userId': widget.asset.creatorId, 'username': author},
+                  ),
+                  child: Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ),
               ),
               const SizedBox(height: 10),
 
