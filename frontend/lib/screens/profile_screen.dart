@@ -310,6 +310,7 @@ class _WebProfileState extends State<_WebProfile> {
     return 'data:image/png;base64,$encoded';
   }
 
+  // Follow/unfollow handler (web profile)
   Future<void> _toggleFollow() async {
     if (_loadingFollow || _isSelf || _profileUserId == null) return;
     setState(() => _loadingFollow = true);
@@ -1048,6 +1049,7 @@ class _MobileProfileState extends State<_MobileProfile> {
     return 'data:image/png;base64,$encoded';
   }
 
+  // Follow/unfollow handler (mobile profile)
   Future<void> _toggleFollow() async {
     if (_loadingFollow || _isSelf || _profileUserId == null) return;
     setState(() => _loadingFollow = true);
