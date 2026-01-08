@@ -42,6 +42,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   String? _assetsError;
   String _searchQuery = "";
 
+  static const double _creatorCardMinWidth = 220;
+
   final List<String> _categories = const [
     "All",
     "Characters",
@@ -128,6 +130,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             _buildMarketHeaderWithCgi(context),
                             const SizedBox(height: 18),
                             _buildSearchBar(),
+                            if (_searchQuery.trim().isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              _buildCreatorResults(isCompact: false),
+                            ],
                             const SizedBox(height: 16),
                             _buildWebCategoryChips(),
                             const SizedBox(height: 22),
@@ -283,6 +289,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSearchBar(),
+            if (_searchQuery.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildCreatorResults(isCompact: true),
+            ],
             const SizedBox(height: 14),
             _buildMobileCategoryChips(),
             const SizedBox(height: 18),
@@ -615,7 +625,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
                 border: InputBorder.none,
-                hintText: "Search 3D assets, creators, packs...",
+                hintText: "Search objects or creators...",
                 hintStyle: TextStyle(color: Colors.white54),
               ),
               onChanged: (value) => setState(() => _searchQuery = value),
@@ -639,6 +649,83 @@ class _ExploreScreenState extends State<ExploreScreen> {
           a.tags.any((t) => t.toLowerCase().contains(query)));
     }
     return results.toList();
+  }
+
+  List<_CreatorResult> _filteredCreators() {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return [];
+    }
+
+    final Map<String, _CreatorResult> results = {};
+    for (final asset in _assets) {
+      if (asset.creatorId.isEmpty) continue;
+      final author = asset.author.trim();
+      if (author.isEmpty) continue;
+      final existing = results[asset.creatorId];
+      if (existing == null) {
+        results[asset.creatorId] = _CreatorResult(
+          id: asset.creatorId,
+          name: author,
+          assetCount: 1,
+        );
+      } else {
+        results[asset.creatorId] = existing.copyWith(assetCount: existing.assetCount + 1);
+      }
+    }
+
+    return results.values
+        .where((creator) => creator.name.toLowerCase().contains(query))
+        .toList()
+      ..sort((a, b) => b.assetCount.compareTo(a.assetCount));
+  }
+
+  Widget _buildCreatorResults({required bool isCompact}) {
+    final creators = _filteredCreators();
+    if (creators.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Creators",
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.95),
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final available = constraints.maxWidth;
+            final maxPerRow = isCompact ? 1 : max(1, (available / _creatorCardMinWidth).floor());
+            final cardWidth = isCompact
+                ? available
+                : min(_creatorCardMinWidth, (available - 12 * (maxPerRow - 1)) / maxPerRow);
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: creators
+                  .map(
+                    (creator) => _CreatorResultCard(
+                      creator: creator,
+                      width: cardWidth,
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        '/profile',
+                        arguments: {'userId': creator.id, 'username': creator.name},
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   // ============================================================
@@ -1285,6 +1372,94 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   }
 }
 
+class _CreatorResult {
+  final String id;
+  final String name;
+  final int assetCount;
+
+  const _CreatorResult({
+    required this.id,
+    required this.name,
+    required this.assetCount,
+  });
+
+  _CreatorResult copyWith({
+    String? id,
+    String? name,
+    int? assetCount,
+  }) {
+    return _CreatorResult(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      assetCount: assetCount ?? this.assetCount,
+    );
+  }
+}
+
+class _CreatorResultCard extends StatelessWidget {
+  final _CreatorResult creator;
+  final double width;
+  final VoidCallback onTap;
+
+  const _CreatorResultCard({
+    required this.creator,
+    required this.width,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: width,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.12)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: const Color(0xFF8A4FFF).withOpacity(0.4),
+                child: Text(
+                  creator.name.isNotEmpty ? creator.name.characters.first.toUpperCase() : "?",
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      creator.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${creator.assetCount} item${creator.assetCount == 1 ? "" : "s"}",
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // =====================================================================
 // ✅ Card (shows priceText: FREE or EGP xxx)
 // =====================================================================
@@ -1377,9 +1552,19 @@ class AssetCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 3),
-            GestureDetector(
-              onTap: onAuthorTap,
-              child: Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 11)),
+            MouseRegion(
+              cursor: onAuthorTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+              child: GestureDetector(
+                onTap: onAuthorTap,
+                child: Text(
+                  "by $author",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    decoration: onAuthorTap != null ? TextDecoration.underline : TextDecoration.none,
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -1629,13 +1814,23 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
               const SizedBox(height: 6),
               Align(
                 alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: () => Navigator.pushNamed(
-                    context,
-                    '/profile',
-                    arguments: {'userId': widget.asset.creatorId, 'username': author},
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      '/profile',
+                      arguments: {'userId': widget.asset.creatorId, 'username': author},
+                    ),
+                    child: Text(
+                      "by $author",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
                   ),
-                  child: Text("by $author", style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 ),
               ),
               const SizedBox(height: 10),
