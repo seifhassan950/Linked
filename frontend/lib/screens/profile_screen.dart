@@ -80,8 +80,8 @@ class _WebProfileState extends State<_WebProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
-    _profileUserId = widget.userId;
-    _isSelf = widget.userId == null;
+    _profileUserId = _normalizeUserId(widget.userId);
+    _isSelf = _profileUserId == null;
     _bootstrap();
   }
 
@@ -94,7 +94,7 @@ class _WebProfileState extends State<_WebProfile> {
     setState(() => _loadingProfile = true);
     try {
       final profile = await r2vProfile.me();
-      final targetUserId = widget.userId ?? profile.id;
+      final targetUserId = _normalizeUserId(widget.userId) ?? profile.id;
       final socialProfile = await r2vSocial.getProfile(targetUserId);
       if (!mounted) return;
       setState(() {
@@ -136,7 +136,7 @@ class _WebProfileState extends State<_WebProfile> {
   }
 
   Future<void> _loadPosts() async {
-    if (_profileUserId == null || _profileUserId!.isEmpty) return;
+    if (!_isSelf && (_profileUserId == null || _profileUserId!.isEmpty)) return;
     setState(() {
       _loadingPosts = true;
       _postsError = null;
@@ -250,6 +250,12 @@ class _WebProfileState extends State<_WebProfile> {
     } catch (_) {
       return null;
     }
+  }
+
+  String? _normalizeUserId(String? raw) {
+    final trimmed = raw?.trim();
+    if (trimmed == null || trimmed.isEmpty || trimmed == 'null') return null;
+    return trimmed;
   }
 
   Future<void> _openEditProfileDialog() async {
@@ -821,8 +827,8 @@ class _MobileProfileState extends State<_MobileProfile> {
   void initState() {
     super.initState();
     displayName = widget.username;
-    _profileUserId = widget.userId;
-    _isSelf = widget.userId == null;
+    _profileUserId = _normalizeUserId(widget.userId);
+    _isSelf = _profileUserId == null;
     _bootstrap();
   }
 
@@ -835,7 +841,7 @@ class _MobileProfileState extends State<_MobileProfile> {
     setState(() => _loadingProfile = true);
     try {
       final profile = await r2vProfile.me();
-      final targetUserId = widget.userId ?? profile.id;
+      final targetUserId = _normalizeUserId(widget.userId) ?? profile.id;
       final socialProfile = await r2vSocial.getProfile(targetUserId);
       if (!mounted) return;
       setState(() {
@@ -877,7 +883,7 @@ class _MobileProfileState extends State<_MobileProfile> {
   }
 
   Future<void> _loadPosts() async {
-    if (_profileUserId == null || _profileUserId!.isEmpty) return;
+    if (!_isSelf && (_profileUserId == null || _profileUserId!.isEmpty)) return;
     setState(() {
       _loadingPosts = true;
       _postsError = null;
@@ -991,6 +997,12 @@ class _MobileProfileState extends State<_MobileProfile> {
     } catch (_) {
       return null;
     }
+  }
+
+  String? _normalizeUserId(String? raw) {
+    final trimmed = raw?.trim();
+    if (trimmed == null || trimmed.isEmpty || trimmed == 'null') return null;
+    return trimmed;
   }
 
   Future<void> _openEditProfileDialog() async {
