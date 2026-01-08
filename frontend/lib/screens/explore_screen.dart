@@ -766,8 +766,9 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
         _showSnack('Unable to capture thumbnail.');
         return;
       }
+      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       setState(() {
-        _thumbnailBytes = data.buffer.asUint8List();
+        _thumbnailBytes = bytes;
         _thumbnailName = 'viewer-thumbnail.png';
         _thumbnailCaptured = true;
       });
