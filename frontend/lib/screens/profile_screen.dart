@@ -8,11 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/marketplace_service.dart';
 import '../api/social_service.dart';
+import 'explore_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final String username;
@@ -1558,10 +1559,25 @@ class _PillTag extends StatelessWidget {
 }
 
 Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) async {
-  final model = asset.previewUrl ?? "";
-  final poster = asset.thumbUrl ?? "";
-  final title = asset.title.isNotEmpty ? asset.title : "Preview";
   final bool isWebWide = MediaQuery.of(context).size.width >= 900;
+
+  Future<void> startDownload() async {
+    try {
+      final url = await r2vMarketplace.downloadAsset(asset.id);
+      if (url.isEmpty) {
+        throw Exception('Missing download url');
+      }
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } on ApiException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to start download')),
+      );
+    }
+  }
 
   if (isWebWide) {
     await showDialog(
@@ -1570,7 +1586,19 @@ Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) asy
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(16),
-        child: _ProfileExpandedViewerShell(title: title, model: model, poster: poster),
+        child: SizedBox(
+          width: 360,
+          child: AssetDetailsPanel(
+            asset: asset,
+            onClose: () => Navigator.pop(context),
+            onFreeDownload: (_) => startDownload(),
+            onPaidBuy: (selected) => Navigator.pushNamed(
+              context,
+              '/payment',
+              arguments: selected,
+            ),
+          ),
+        ),
       ),
     );
   } else {
@@ -1581,98 +1609,16 @@ Future<void> _showAssetPreview(BuildContext context, MarketplaceAsset asset) asy
       builder: (_) => Padding(
         padding: const EdgeInsets.all(12),
         child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.90,
-          child: _ProfileExpandedViewerShell(title: title, model: model, poster: poster),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileExpandedViewerShell extends StatelessWidget {
-  final String title;
-  final String model;
-  final String poster;
-
-  const _ProfileExpandedViewerShell({
-    required this.title,
-    required this.model,
-    required this.poster,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.35),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.14)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.10),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.12)),
-                        ),
-                        child: const Icon(Icons.close, size: 18, color: Colors.white70),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    color: Colors.black.withOpacity(0.18),
-                    child: model.isEmpty
-                        ? Center(
-                            child: Text(
-                              "Preview unavailable",
-                              style: TextStyle(color: Colors.white.withOpacity(0.7)),
-                            ),
-                          )
-                        : ModelViewer(
-                            key: ValueKey("profile-expanded-$model"),
-                            src: model,
-                            poster: poster,
-                            backgroundColor: Colors.transparent,
-                            cameraControls: true,
-                            disableZoom: false,
-                            autoRotate: true,
-                            environmentImage: "neutral",
-                            exposure: 1.0,
-                            shadowIntensity: 0.8,
-                            shadowSoftness: 1,
-                          ),
-                  ),
-                ),
-              ),
-            ],
+          height: MediaQuery.of(context).size.height * 0.72,
+          child: AssetDetailsPanel(
+            asset: asset,
+            onClose: () => Navigator.pop(context),
+            onFreeDownload: (_) => startDownload(),
+            onPaidBuy: (selected) => Navigator.pushNamed(
+              context,
+              '/payment',
+              arguments: selected,
+            ),
           ),
         ),
       ),

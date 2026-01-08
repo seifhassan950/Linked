@@ -1826,7 +1826,8 @@ class _AssetDetailsPanelState extends State<AssetDetailsPanel> {
                       "by $author",
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 12,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
                         decoration: TextDecoration.underline,
                       ),
                     ),
