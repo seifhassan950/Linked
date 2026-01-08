@@ -2,6 +2,8 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/rendering.dart';
@@ -12,6 +14,8 @@ import 'package:flutter/services.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/marketplace_service.dart';
+import '../utils/web_model_viewer_capture.dart';
+import '../utils/web_model_viewer_capture.dart';
 
 // ============================================================
 // ✅ Explore Screen (WEB: Centered 3-col grid + RIGHT details panel)
@@ -692,6 +696,7 @@ class _MarketplaceUploadDialog extends StatefulWidget {
 
 class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   final GlobalKey _viewerKey = GlobalKey();
+  final String _viewerDomId = 'marketplace-model-viewer';
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -745,13 +750,27 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
     setState(() {
       _thumbnailBytes = file.bytes;
       _thumbnailName = file.name;
-      _thumbnailCaptured = false;
+      _thumbnailCaptured = true;
     });
   }
 
   Future<void> _captureThumbnail() async {
     if (_modelDataUrl == null) {
       _showSnack('Upload a 3D model first.');
+      return;
+    }
+    if (kIsWeb) {
+      final bytes = await captureModelViewerPng(_viewerDomId);
+      if (bytes == null) {
+        _showSnack('Unable to capture thumbnail.');
+        return;
+      }
+      setState(() {
+        _thumbnailBytes = bytes;
+        _thumbnailName = 'viewer-thumbnail.png';
+        _thumbnailCaptured = true;
+      });
+      _showSnack('Thumbnail captured from viewer.');
       return;
     }
     final boundary = _viewerKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -1127,6 +1146,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
                                   )
                                 : ModelViewer(
                                     key: ValueKey(_modelDataUrl),
+                                    id: _viewerDomId,
                                     src: _modelDataUrl!,
                                     backgroundColor: Colors.transparent,
                                     cameraControls: true,
