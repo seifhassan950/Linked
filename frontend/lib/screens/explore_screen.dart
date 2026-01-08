@@ -713,7 +713,7 @@ class _MarketplaceUploadDialogState extends State<_MarketplaceUploadDialog> {
   String _style = "Realistic";
 
   bool get _canCaptureThumbnail {
-    if (kIsWeb) return false;
+    if (kIsWeb) return true;
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
   }
