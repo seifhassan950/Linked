@@ -4,11 +4,9 @@ from pathlib import Path
 import mimetypes
 import time
 
-import cv2
 import httpx
-import numpy as np
-import open3d as o3d
-import trimesh
+
+from app.core.config import settings
 
 from app.core.config import settings
 
@@ -87,6 +85,10 @@ def _reconstruct_with_openscancloud(image_dir: Path, out_glb: Path) -> None:
 
 
 def _reconstruct_locally(image_dir: Path, out_glb: Path) -> None:
+    import cv2
+    import numpy as np
+    import open3d as o3d
+
     image_paths = sorted(
         p
         for p in image_dir.iterdir()
@@ -220,6 +222,8 @@ def _reconstruct_locally(image_dir: Path, out_glb: Path) -> None:
 
 
 def _resize_for_reconstruction(image: np.ndarray) -> np.ndarray:
+    import cv2
+
     h, w = image.shape[:2]
     scale = MAX_IMAGE_SIDE / max(h, w)
     if scale >= 1:
@@ -230,6 +234,8 @@ def _resize_for_reconstruction(image: np.ndarray) -> np.ndarray:
 
 
 def _sample_colors(image: np.ndarray, points: np.ndarray) -> np.ndarray:
+    import numpy as np
+
     h, w = image.shape[:2]
     xs = np.clip(points[:, 0].astype(int), 0, w - 1)
     ys = np.clip(points[:, 1].astype(int), 0, h - 1)
@@ -239,6 +245,9 @@ def _sample_colors(image: np.ndarray, points: np.ndarray) -> np.ndarray:
 
 
 def _export_mesh_glb(mesh: o3d.geometry.TriangleMesh, out_glb: Path) -> None:
+    import numpy as np
+    import trimesh
+
     vertices = np.asarray(mesh.vertices)
     triangles = np.asarray(mesh.triangles)
     if vertices.size == 0 or triangles.size == 0:
