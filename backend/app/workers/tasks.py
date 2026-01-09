@@ -20,6 +20,15 @@ def _mark_failed(job, err: str, db: Session):
     job.updated_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
 
+def _format_scan_error(err: Exception) -> str:
+    message = str(err)
+    if "libgomp.so.1" in message:
+        return (
+            "Photogrammetry failed because the server is missing libgomp (OpenMP). "
+            "Install the libgomp1 package or include it in the deployment image."
+        )
+    return message
+
 @celery_app.task(name="app.workers.tasks.ai_generate_task")
 def ai_generate_task(job_id: str):
     db = _db()
@@ -96,6 +105,6 @@ def scan_reconstruct_task(job_id: str):
             job.updated_at = dt.datetime.now(dt.timezone.utc)
             db.commit()
     except Exception as e:
-        _mark_failed(job, str(e), db)
+        _mark_failed(job, _format_scan_error(e), db)
     finally:
         db.close()
