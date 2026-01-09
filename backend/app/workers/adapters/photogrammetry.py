@@ -1,17 +1,92 @@
 from __future__ import annotations
 
 from pathlib import Path
+import mimetypes
+import time
 
-import cv2
-import numpy as np
-import open3d as o3d
-import trimesh
+import httpx
+
+from app.core.config import settings
 
 MIN_MATCHES = 24
 MAX_IMAGE_SIDE = 1400
 
 
 def reconstruct_from_images(image_dir: Path, out_glb: Path) -> None:
+    if settings.openscancloud_base_url and settings.openscancloud_token:
+        _reconstruct_with_openscancloud(image_dir, out_glb)
+        return
+
+    _reconstruct_locally(image_dir, out_glb)
+
+
+def _reconstruct_with_openscancloud(image_dir: Path, out_glb: Path) -> None:
+    image_paths = sorted(
+        p
+        for p in image_dir.iterdir()
+        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+    )
+    if len(image_paths) < 2:
+        raise ValueError("Need at least two images for photogrammetry.")
+
+    base_url = settings.openscancloud_base_url.rstrip("/")
+    create_url = f"{base_url}{settings.openscancloud_create_path}"
+    status_path = settings.openscancloud_status_path
+    download_path = settings.openscancloud_download_path
+
+    headers = {"Authorization": f"Bearer {settings.openscancloud_token}"}
+    timeout = settings.openscancloud_timeout_seconds
+
+    files = []
+    for path in image_paths:
+        content_type, _ = mimetypes.guess_type(path.name)
+        files.append(("images", (path.name, path.open("rb"), content_type or "image/jpeg")))
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(create_url, headers=headers, files=files)
+            response.raise_for_status()
+            data = response.json()
+            job_id = data.get("id") or data.get("job_id")
+            if not job_id:
+                raise ValueError("OpenScanCloud response missing job id.")
+
+            status_url = f"{base_url}{status_path.format(job_id=job_id)}"
+            download_url = None
+            deadline = time.monotonic() + settings.openscancloud_max_poll_seconds
+            while time.monotonic() < deadline:
+                status_response = client.get(status_url, headers=headers)
+                status_response.raise_for_status()
+                status_payload = status_response.json()
+                status = (status_payload.get("status") or status_payload.get("state") or "").lower()
+                if status in {"succeeded", "success", "completed", "done"}:
+                    download_url = (
+                        status_payload.get("download_url")
+                        or status_payload.get("result_url")
+                        or f"{base_url}{download_path.format(job_id=job_id)}"
+                    )
+                    if download_url.startswith("/"):
+                        download_url = f"{base_url}{download_url}"
+                    break
+                if status in {"failed", "error"}:
+                    raise ValueError(status_payload.get("error") or "OpenScanCloud reconstruction failed.")
+                time.sleep(settings.openscancloud_poll_interval_seconds)
+            else:
+                raise ValueError("OpenScanCloud reconstruction timed out.")
+
+            download_response = client.get(download_url, headers=headers)
+            download_response.raise_for_status()
+            out_glb.write_bytes(download_response.content)
+    finally:
+        for _, (_, handle, _) in files:
+            handle.close()
+
+
+def _reconstruct_locally(image_dir: Path, out_glb: Path) -> None:
+    import cv2
+    import numpy as np
+    import open3d as o3d
+
     image_paths = sorted(
         p
         for p in image_dir.iterdir()
@@ -145,6 +220,8 @@ def reconstruct_from_images(image_dir: Path, out_glb: Path) -> None:
 
 
 def _resize_for_reconstruction(image: np.ndarray) -> np.ndarray:
+    import cv2
+
     h, w = image.shape[:2]
     scale = MAX_IMAGE_SIDE / max(h, w)
     if scale >= 1:
@@ -155,6 +232,8 @@ def _resize_for_reconstruction(image: np.ndarray) -> np.ndarray:
 
 
 def _sample_colors(image: np.ndarray, points: np.ndarray) -> np.ndarray:
+    import numpy as np
+
     h, w = image.shape[:2]
     xs = np.clip(points[:, 0].astype(int), 0, w - 1)
     ys = np.clip(points[:, 1].astype(int), 0, h - 1)
@@ -164,6 +243,9 @@ def _sample_colors(image: np.ndarray, points: np.ndarray) -> np.ndarray:
 
 
 def _export_mesh_glb(mesh: o3d.geometry.TriangleMesh, out_glb: Path) -> None:
+    import numpy as np
+    import trimesh
+
     vertices = np.asarray(mesh.vertices)
     triangles = np.asarray(mesh.triangles)
     if vertices.size == 0 or triangles.size == 0:
