@@ -41,4 +41,13 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     max_upload_bytes: int = 104857600
 
+    openscancloud_base_url: str | None = None
+    openscancloud_token: str | None = None
+    openscancloud_create_path: str = "/reconstructions"
+    openscancloud_status_path: str = "/reconstructions/{job_id}"
+    openscancloud_download_path: str = "/reconstructions/{job_id}/download"
+    openscancloud_timeout_seconds: int = 120
+    openscancloud_poll_interval_seconds: int = 10
+    openscancloud_max_poll_seconds: int = 1800
+
 settings = Settings()
