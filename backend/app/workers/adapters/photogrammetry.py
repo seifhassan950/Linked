@@ -8,6 +8,8 @@ import httpx
 
 from app.core.config import settings
 
+from app.core.config import settings
+
 MIN_MATCHES = 24
 MAX_IMAGE_SIDE = 1400
 
