@@ -76,8 +76,11 @@ def scan_reconstruct_task(job_id: str):
             out_glb = td / "scan.glb"
             out_fixed = td / "scan_fixed.glb"
 
-            # NOTE: placeholder doesn't download from S3 to save time/bandwidth.
-            # In a real pipeline, download the input images (keys) to inputs/ then run reconstruction.
+            for key in job.input_keys or []:
+                filename = Path(key).name
+                target = inputs / filename
+                s3.download_file(settings.s3_bucket_scans_raw, key, str(target))
+
             reconstruct_from_images(inputs, out_glb)
             job.progress = 70; db.commit()
 
