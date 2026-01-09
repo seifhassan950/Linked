@@ -66,4 +66,7 @@ class S3Client:
         extra = {"ContentType": content_type} if content_type else {}
         self.client.upload_file(local_path, bucket, key, ExtraArgs=extra)
 
+    def download_file(self, bucket: str, key: str, local_path: str) -> None:
+        self.client.download_file(bucket, key, local_path)
+
 s3 = S3Client()
