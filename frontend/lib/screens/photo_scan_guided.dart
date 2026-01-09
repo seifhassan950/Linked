@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../api/r2v_api.dart';
 import '../api/api_exception.dart';
 import '../api/scan_jobs_service.dart';
@@ -43,6 +44,12 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
   String? _webPickedName;
   final List<ScanUpload> _pendingUploads = [];
   bool _uploading = false;
+  Timer? _pollTimer;
+  String? _activeJobId;
+  String _jobStatus = "idle";
+  int _jobProgress = 0;
+  String? _jobError;
+  String? _modelUrl;
 
   @override
   void initState() {
@@ -83,6 +90,7 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _intro.dispose();
     _cam?.dispose();
     super.dispose();
@@ -118,14 +126,16 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
     if (kIsWeb) return;
     final picker = ImagePicker();
     try {
-      final x = await picker.pickImage(source: ImageSource.gallery, imageQuality: 92);
-      if (x == null) return;
+      final picks = await picker.pickMultiImage(imageQuality: 92);
+      if (picks.isEmpty) return;
 
-      final bytes = await x.readAsBytes();
-      _addUpload(x.name, bytes);
+      for (final x in picks) {
+        final bytes = await x.readAsBytes();
+        _addUpload(x.name, bytes);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Selected: ${x.name}"),
+          content: Text("Selected: ${picks.length} image(s)"),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -143,21 +153,22 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
 
     final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowMultiple: false,
+      allowMultiple: true,
       allowedExtensions: const ["png", "jpg", "jpeg", "webp"],
       withData: true,
     );
 
     if (res == null || res.files.isEmpty) return;
 
-    final f = res.files.first;
     setState(() {
-      _webPickedBytes = f.bytes;
-      _webPickedName = f.name;
-      if (f.bytes != null) {
-        _pendingUploads.clear();
+      _pendingUploads.clear();
+      for (final f in res.files) {
+        if (f.bytes == null) continue;
         _addUpload(f.name, f.bytes!);
       }
+      _photoCount = _pendingUploads.length;
+      _webPickedBytes = res.files.first.bytes;
+      _webPickedName = res.files.first.name;
     });
   }
 
@@ -197,6 +208,7 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
       }
       final started = await r2vScanJobs.startJob(job.id);
       if (!mounted) return;
+      _startPolling(started.id);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Scan started (status: ${started.status})"),
@@ -208,6 +220,10 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
         _photoCount = 0;
         _webPickedBytes = null;
         _webPickedName = null;
+        _jobStatus = started.status;
+        _jobProgress = started.progress;
+        _jobError = null;
+        _modelUrl = null;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -222,6 +238,154 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
+  }
+
+  void _startPolling(String jobId) {
+    _pollTimer?.cancel();
+    setState(() {
+      _activeJobId = jobId;
+      _jobStatus = "queued";
+      _jobProgress = 0;
+      _jobError = null;
+    });
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        final job = await r2vScanJobs.getJob(jobId);
+        if (!mounted) return;
+        setState(() {
+          _jobStatus = job.status;
+          _jobProgress = job.progress;
+          _jobError = job.error;
+        });
+        if (job.status == "succeeded") {
+          final url = await r2vScanJobs.downloadGlb(jobId);
+          if (!mounted) return;
+          setState(() => _modelUrl = url);
+          timer.cancel();
+        } else if (job.status == "failed") {
+          timer.cancel();
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _jobStatus = "error";
+          _jobError = "Unable to fetch scan status.";
+        });
+        timer.cancel();
+      }
+    });
+  }
+
+  void _showModelViewerDialog() {
+    if (_modelUrl == null) return;
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              color: Colors.black,
+              height: 400,
+              child: ModelViewer(
+                src: _modelUrl!,
+                alt: "Reconstructed model",
+                ar: false,
+                autoRotate: true,
+                cameraControls: true,
+                backgroundColor: Colors.black,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildScanStatus({required bool isWeb}) {
+    if (_activeJobId == null) {
+      return const SizedBox.shrink();
+    }
+    final statusText = _jobStatus == "succeeded"
+        ? "Scan ready"
+        : _jobStatus == "failed"
+            ? "Scan failed"
+            : "Scanning ($_jobProgress%)";
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.24),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            statusText,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (_jobError != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _jobError!,
+              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+            ),
+          ],
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: _jobStatus == "succeeded" ? 1 : _jobProgress / 100,
+              minHeight: 8,
+              backgroundColor: Colors.white.withOpacity(0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _jobStatus == "failed" ? Colors.redAccent : accent2,
+              ),
+            ),
+          ),
+          if (_modelUrl != null && isWeb) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 240,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: ModelViewer(
+                  src: _modelUrl!,
+                  alt: "Reconstructed model",
+                  ar: false,
+                  autoRotate: true,
+                  cameraControls: true,
+                  backgroundColor: Colors.black,
+                ),
+              ),
+            ),
+          ],
+          if (_modelUrl != null && !isWeb) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _showModelViewerDialog,
+                icon: const Icon(Icons.view_in_ar_rounded, size: 18),
+                label: const Text("View 3D model"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent2,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -289,9 +453,9 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                                       size: 44, color: Colors.white.withOpacity(0.8)),
                                                   const SizedBox(height: 10),
                                                   Text(
-                                                    _webPickedBytes == null
+                                                    _pendingUploads.isEmpty
                                                         ? "Click to upload images"
-                                                        : "Selected: $_webPickedName",
+                                                        : "Selected: ${_pendingUploads.length} image(s)",
                                                     style: TextStyle(
                                                       color: Colors.white.withOpacity(0.9),
                                                       fontWeight: FontWeight.w700,
@@ -308,6 +472,8 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                           ),
                                         ),
                                       ),
+
+                                      _buildScanStatus(isWeb: true),
 
                                       const SizedBox(height: 14),
                                       Row(
@@ -400,6 +566,13 @@ class _PhotoScanGuidedScreenState extends State<PhotoScanGuidedScreen>
                                             right: 12,
                                             top: 78,
                                             child: _TipsRow(compact: true),
+                                          ),
+
+                                          Positioned(
+                                            left: 12,
+                                            right: 12,
+                                            bottom: 108,
+                                            child: _buildScanStatus(isWeb: false),
                                           ),
 
                                           // bottom controls (glass)

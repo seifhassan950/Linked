@@ -27,6 +27,10 @@ dependencies = [
   "black>=24.8",
   "tenacity>=9.0",
   "Pillow>=10.4",
+  "numpy>=2.1",
+  "opencv-python>=4.10",
+  "open3d>=0.18",
+  "trimesh>=4.5",
 ]
 
 [tool.black]

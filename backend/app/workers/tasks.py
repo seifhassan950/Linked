@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.workers.adapters.image_gen import generate_image
 from app.workers.adapters.model_gen import image_to_3d
 from app.workers.adapters.repair import repair_mesh
-from app.workers.adapters.photogrammetry import reconstruct_from_images
 
 def _db() -> Session:
     return SessionLocal()
@@ -76,8 +75,13 @@ def scan_reconstruct_task(job_id: str):
             out_glb = td / "scan.glb"
             out_fixed = td / "scan_fixed.glb"
 
-            # NOTE: placeholder doesn't download from S3 to save time/bandwidth.
-            # In a real pipeline, download the input images (keys) to inputs/ then run reconstruction.
+            from app.workers.adapters.photogrammetry import reconstruct_from_images
+
+            for key in job.input_keys or []:
+                filename = Path(key).name
+                target = inputs / filename
+                s3.download_file(settings.s3_bucket_scans_raw, key, str(target))
+
             reconstruct_from_images(inputs, out_glb)
             job.progress = 70; db.commit()
 

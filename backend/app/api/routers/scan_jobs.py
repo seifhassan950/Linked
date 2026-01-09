@@ -69,6 +69,13 @@ def list_jobs(limit: int = 20, offset: int = 0, db: Session = Depends(get_db), u
     items = db.execute(q).scalars().all()
     return [to_job_out(j) for j in items]
 
+@router.get("/jobs/{job_id}", response_model=JobOut)
+def get_job(job_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    j = db.get(ScanJob, job_id)
+    if not j: not_found()
+    if j.user_id != user.id: forbidden()
+    return to_job_out(j)
+
 @router.get("/jobs/{job_id}/download/glb", response_model=DownloadOut)
 def download_glb(job_id: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
     j = db.get(ScanJob, job_id)

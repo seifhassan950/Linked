@@ -8,11 +8,17 @@ class ScanJob {
   final String id;
   final String status;
   final int progress;
+  final String? outputGlbKey;
+  final List<String> previewKeys;
+  final String? error;
 
   const ScanJob({
     required this.id,
     required this.status,
     required this.progress,
+    this.outputGlbKey,
+    this.previewKeys = const [],
+    this.error,
   });
 
   factory ScanJob.fromJson(Map<String, dynamic> json) {
@@ -20,6 +26,9 @@ class ScanJob {
       id: json['id']?.toString() ?? '',
       status: json['status']?.toString() ?? '',
       progress: (json['progress'] ?? 0) as int,
+      outputGlbKey: json['output_glb_key']?.toString(),
+      previewKeys: (json['preview_keys'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      error: json['error']?.toString(),
     );
   }
 }
@@ -55,6 +64,11 @@ class ScanJobsService {
         .toList();
   }
 
+  Future<ScanJob> getJob(String jobId) async {
+    final data = await _api.getJson('/scan/jobs/$jobId', auth: true);
+    return ScanJob.fromJson(data);
+  }
+
   Future<String> presignUpload({
     required String jobId,
     required String filename,
@@ -85,5 +99,10 @@ class ScanJobsService {
   Future<ScanJob> startJob(String jobId) async {
     final data = await _api.postJson('/scan/jobs/$jobId/start', auth: true);
     return ScanJob.fromJson(data);
+  }
+
+  Future<String> downloadGlb(String jobId) async {
+    final data = await _api.getJson('/scan/jobs/$jobId/download/glb', auth: true);
+    return data['url']?.toString() ?? '';
   }
 }
