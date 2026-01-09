@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.workers.adapters.image_gen import generate_image
 from app.workers.adapters.model_gen import image_to_3d
 from app.workers.adapters.repair import repair_mesh
-from app.workers.adapters.photogrammetry import reconstruct_from_images
 
 def _db() -> Session:
     return SessionLocal()
@@ -75,6 +74,8 @@ def scan_reconstruct_task(job_id: str):
             inputs = td / "inputs"; inputs.mkdir(parents=True, exist_ok=True)
             out_glb = td / "scan.glb"
             out_fixed = td / "scan_fixed.glb"
+
+            from app.workers.adapters.photogrammetry import reconstruct_from_images
 
             for key in job.input_keys or []:
                 filename = Path(key).name
